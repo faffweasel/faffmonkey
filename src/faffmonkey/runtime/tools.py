@@ -169,8 +169,7 @@ class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
         self._conn_class = conn_class
 
     def https_open(self, req):
-        return self.do_open(self._conn_class, req,
-            context=self._context, check_hostname=self._check_hostname)
+        return self.do_open(self._conn_class, req)
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
