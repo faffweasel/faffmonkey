@@ -84,9 +84,16 @@ def parse_frontmatter(text: str) -> dict[str, str]:
     return result
 
 
-def unmet_requirements(frontmatter: dict[str, str]) -> list[str]:
+def unmet_requirements(
+    frontmatter: dict[str, str], commands: dict[str, str],
+) -> list[str]:
     """What a skill's `requires` block asks for and this host lacks, so a
     skill whose API key is not set stays out of the catalog.
+
+    `commands` is the loaded commands.json. invoke() merges it into the
+    subprocess environment, so a required env var it supplies is met at
+    run time; checking os.environ alone hid every skill that required a
+    command-seam key, and then satisfied that requirement on invocation.
     """
     raw = frontmatter.get("metadata", "")
     if not raw:
@@ -104,7 +111,7 @@ def unmet_requirements(frontmatter: dict[str, str]) -> list[str]:
 
     missing: list[str] = []
     for var in requires.get("env") or []:
-        if isinstance(var, str) and not os.environ.get(var):
+        if isinstance(var, str) and not (os.environ.get(var) or commands.get(var)):
             missing.append(f"env {var}")
     for binary in requires.get("bins") or []:
         if isinstance(binary, str) and shutil.which(binary) is None:
@@ -112,11 +119,18 @@ def unmet_requirements(frontmatter: dict[str, str]) -> list[str]:
     return missing
 
 
-def scan_skills(workspace: Path) -> list[tuple[str, str]]:
+def scan_skills(
+    workspace: Path, state_dir: Path | None = None,
+) -> list[tuple[str, str]]:
     skills_dir = workspace / "skills"
     skills: list[tuple[str, str]] = []
     if not skills_dir.is_dir():
         return skills
+    # Same default as invoke(), so the catalog and the invocation agree on
+    # which commands.json a requirement is checked against.
+    if state_dir is None:
+        state_dir = workspace.parent / "state"
+    commands = load_commands(state_dir)
     for skill_dir in sorted(skills_dir.iterdir()):
         if not skill_dir.is_dir():
             continue
@@ -131,7 +145,7 @@ def scan_skills(workspace: Path) -> list[tuple[str, str]]:
             continue
         fm = parse_frontmatter(skill_md.read_text())
         name = fm.get("name", skill_dir.name)
-        missing = unmet_requirements(fm)
+        missing = unmet_requirements(fm, commands)
         if missing:
             logger.info(
                 "skill %s not offered: missing %s", name, ", ".join(missing),

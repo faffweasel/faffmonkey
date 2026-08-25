@@ -348,7 +348,9 @@ commands take `--prompt`/`--output` (edit adds `--input`) and print
 channel attachments, so a generated image is sent rather than merely
 named. Skills declaring a `requires` block (env vars, binaries) are
 filtered out of the catalog when the host does not satisfy it, instead
-of being offered and then failing.
+of being offered and then failing. A required env var counts as
+satisfied when either the process environment or `commands.json`
+supplies it, since the latter is merged into every skill subprocess.
 
 ## Cron
 

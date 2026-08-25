@@ -313,7 +313,12 @@ def _handle_compact(compact_fn: Callable[[], dict] | None) -> str:
     )
 
 
-def _handle_skill(args: str, workspace: Path | None = None, tz: str = "UTC") -> str:
+def _handle_skill(
+    args: str,
+    workspace: Path | None = None,
+    tz: str = "UTC",
+    state_dir: Path | None = None,
+) -> str:
     # shlex, not str.split: the same quoting rule the skill_invoke tool
     # follows, so /skill and the tool behave identically.
     try:
@@ -330,7 +335,7 @@ def _handle_skill(args: str, workspace: Path | None = None, tz: str = "UTC") -> 
 
     full_md = skill_load_full(workspace, name)
     if full_md is None:
-        available = scan_skills(workspace)
+        available = scan_skills(workspace, state_dir)
         if available:
             names = ", ".join(n for n, _ in available)
             return f"skill not found: {name}. Available: {names}"
@@ -343,7 +348,7 @@ def _handle_skill(args: str, workspace: Path | None = None, tz: str = "UTC") -> 
     action_args = parts[2:] if len(parts) > 2 else []
 
     output, attachments, is_error = skill_invoke(
-        workspace, name, action, action_args, tz=tz,
+        workspace, name, action, action_args, tz=tz, state_dir=state_dir,
     )
     result_parts = [output]
     if attachments:
@@ -426,7 +431,9 @@ def handle_slash_command(
     if cmd == "/compact":
         return _handle_compact(compact_fn)
     if cmd == "/skill":
-        return _handle_skill(args, workspace=workspace, tz=str(config.timezone))
+        return _handle_skill(
+            args, workspace=workspace, tz=str(config.timezone), state_dir=state_dir,
+        )
     if cmd == "/cron":
         return _handle_cron(args, workspace=workspace, state_dir=state_dir)
 

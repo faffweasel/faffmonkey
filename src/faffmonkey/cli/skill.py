@@ -7,7 +7,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from faffmonkey.cli.init import _check_no_symlink_components, _find_project_root
-from faffmonkey.runtime.skills import parse_frontmatter, scan_skills, unmet_requirements
+from faffmonkey.runtime.skills import (
+    load_commands,
+    parse_frontmatter,
+    scan_skills,
+    unmet_requirements,
+)
 
 _SKILL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
@@ -164,8 +169,9 @@ def _print_setup_checklist(dest: Path, workspace_dir: Path) -> None:
             frontmatter = parse_frontmatter(skill_md.read_text())
         except OSError:
             frontmatter = {}
-        state_env = workspace_dir.parent / "state" / ".env"
-        for item in unmet_requirements(frontmatter):
+        state_dir = workspace_dir.parent / "state"
+        state_env = state_dir / ".env"
+        for item in unmet_requirements(frontmatter, load_commands(state_dir)):
             if item.startswith("env "):
                 var = item[4:]
                 if not _env_satisfied(var, state_env):
@@ -195,7 +201,7 @@ def _print_setup_checklist(dest: Path, workspace_dir: Path) -> None:
 
 
 def run_skill_list(workspace_dir: Path) -> int:
-    installed = scan_skills(workspace_dir)
+    installed = scan_skills(workspace_dir, workspace_dir.parent / "state")
     installed_names = {name for name, _desc in installed}
 
     print("Installed (workspace/skills/):")

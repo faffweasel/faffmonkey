@@ -875,6 +875,23 @@ class TestRequiresGating:
         monkeypatch.setenv("WEATHER_KEY", "")
         assert scan_skills(tmp_path) == []
 
+    def test_command_seam_key_satisfies_requirement(self, tmp_path, monkeypatch):
+        """2026-08-25: selfie required IMAGE_EDIT_CMD, which only
+        commands.json supplied. The catalog check read os.environ alone,
+        hid the skill, and the agent generated a portrait instead of
+        editing the reference one. invoke() merges commands.json into
+        the subprocess env, so the catalog must count it as present."""
+        workspace = tmp_path / "workspace"
+        self._skill(workspace, "selfie", '{"faffmonkey":{"requires":{"env":["IMAGE_EDIT_CMD"]}}}')
+        monkeypatch.delenv("IMAGE_EDIT_CMD", raising=False)
+        state = tmp_path / "state"
+        state.mkdir()
+        (state / "commands.json").write_text(
+            json.dumps({"IMAGE_EDIT_CMD": "python3 skills/venice-ai-media/scripts/venice-edit.py"})
+        )
+        assert [n for n, _ in scan_skills(workspace)] == ["selfie"]
+        assert [n for n, _ in scan_skills(workspace, state)] == ["selfie"]
+
 
 class TestDeclaredActionsAreAnAllowList:
     """P6-L1: every shared module in scripts/ was reachable as an action."""
