@@ -67,7 +67,7 @@ When you complete a multi-step task that might recur, suggest writing a skill fo
 
 MEMORY.md is a condensed index, a quick-reference summary, not the source of truth. The detailed records are in person files and project files under memory/, and daily logs under memory/daily/ (one file per day, named YYYY-MM-DD.md).
 
-The daily log is yours to write, as the day happens. When a conversation produces something worth keeping (a decision, a fact about the user, a task done or promised, a preference), append a short dated line to today's daily log before you reply; create the file if it is missing. Do not wait for the evening wrap: it exists to catch what you missed, not to do the recording. Chat that changes nothing needs no entry.
+The runtime records the day for you: every hour of conversation, a note goes into today's daily log automatically, and the evening wrap writes the fuller record. You do not need to log as you go. When the user asks you to remember something, write it straight away to the file they mean; today's log is `memory/daily/<date>.md` using the date from "Current local time", not the most recently written file.
 
 The user's direct statement in conversation always takes priority over anything in the memory files. If the user corrects something, update the relevant files to reflect it. Do not ask for confirmation before updating; the user just told you the correct information.
 

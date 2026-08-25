@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
@@ -1886,3 +1887,151 @@ class TestCheapTierResolvesTheSlot:
             raise RuntimeError("down")
 
         assert _summarise([Message(role="user", content="x")], provider_fn, config) is None
+
+
+class TestDailyNote:
+    """2026-08-25: a full day of conversation produced no daily-log entry.
+    AGENTS.md asked the agent to append as it went and it never did; the
+    evening job that should have caught it failed on a provider error; and
+    when asked directly it wrote into yesterday's file. The loop now owns
+    the recording."""
+
+    def _session(self, tmp_path):
+        from faffmonkey.config import DailyNoteConfig
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        store = SessionStore(tmp_path / "state" / "sessions.db")
+        session = store.get_or_create_main_session("test")
+        config = _make_config(
+            timezone=ZoneInfo("Asia/Bangkok"),
+            routing={"conversation": "main", "compaction": "cheap"},
+            daily_note=DailyNoteConfig(every_turns=3, every_minutes=60),
+        )
+        return workspace, store, session, config
+
+    def _note_response(self, content):
+        return faux_response(tool_calls=[{
+            "name": "daily_note", "arguments": {"content": content},
+        }])
+
+    def test_appends_to_today_in_the_configured_timezone(self, tmp_path):
+        from faffmonkey.runtime.compaction import daily_note
+        workspace, store, session, config = self._session(tmp_path)
+        store.append_message(session.id, "user", "the deadline moved to Friday")
+        store.append_message(session.id, "assistant", "noted")
+        provider = FauxProvider([self._note_response("Deadline moved to Friday.")])
+
+        # 17:20 UTC on the 24th is 00:20 on the 25th in Bangkok.
+        fixed = datetime(2026, 8, 25, 0, 20, tzinfo=ZoneInfo("Asia/Bangkok"))
+        with patch("faffmonkey.runtime.compaction.datetime") as dt:
+            dt.now.return_value = fixed
+            dt.fromisoformat = datetime.fromisoformat
+            assert daily_note(store, session.id, workspace, lambda mc: provider, config)
+
+        daily = workspace / "memory" / "daily"
+        assert sorted(p.name for p in daily.iterdir()) == ["2026-08-25.md"]
+        text = (daily / "2026-08-25.md").read_text()
+        assert text.startswith("# 2026-08-25\n")
+        assert "- 00:20 Deadline moved to Friday." in text
+        assert provider.calls[0].model == "faux-cheap"
+
+    def test_model_never_chooses_the_path(self, tmp_path):
+        from faffmonkey.runtime.compaction import daily_note
+        workspace, store, session, config = self._session(tmp_path)
+        store.append_message(session.id, "user", "remember this")
+        provider = FauxProvider([faux_response(tool_calls=[
+            {"name": "file_write", "arguments": {"path": "MEMORY.md", "content": "x"}},
+            {"name": "file_write", "arguments": {"path": "memory/daily/2026-08-24.md", "content": "x"}},
+            {"name": "daily_note", "arguments": {"content": "kept"}},
+        ])])
+
+        assert daily_note(store, session.id, workspace, lambda mc: provider, config)
+
+        assert not (workspace / "MEMORY.md").exists()
+        assert not (workspace / "memory" / "daily" / "2026-08-24.md").exists()
+        written = list((workspace / "memory" / "daily").iterdir())
+        assert len(written) == 1 and "kept" in written[0].read_text()
+
+    def test_existing_log_is_only_ever_appended_to(self, tmp_path):
+        from faffmonkey.runtime.compaction import daily_note
+        workspace, store, session, config = self._session(tmp_path)
+        today = datetime.now(config.timezone).date().isoformat()
+        log = workspace / "memory" / "daily" / f"{today}.md"
+        log.parent.mkdir(parents=True)
+        log.write_text(f"# {today}\n\nMorning message sent 07:30\n")
+        store.append_message(session.id, "user", "hello")
+        provider = FauxProvider([self._note_response("Said hello.")])
+
+        daily_note(store, session.id, workspace, lambda mc: provider, config)
+
+        text = log.read_text()
+        assert text.startswith(f"# {today}\n\nMorning message sent 07:30\n")
+        assert text.rstrip().endswith("Said hello.")
+
+    def test_nothing_worth_keeping_advances_the_cursor_without_writing(self, tmp_path):
+        from faffmonkey.runtime.compaction import daily_note, daily_note_due
+        workspace, store, session, config = self._session(tmp_path)
+        for i in range(3):
+            store.append_message(session.id, "user", f"small talk {i}")
+        assert daily_note_due(store, session.id, config.daily_note)
+        provider = FauxProvider([faux_response(text="nothing to keep")])
+
+        assert daily_note(store, session.id, workspace, lambda mc: provider, config)
+
+        assert not (workspace / "memory").exists()
+        assert store.daily_note_at(session.id) is not None
+        assert not daily_note_due(store, session.id, config.daily_note)
+
+    def test_provider_failure_leaves_the_cursor_for_a_retry(self, tmp_path):
+        from faffmonkey.runtime.compaction import daily_note
+        workspace, store, session, config = self._session(tmp_path)
+        store.append_message(session.id, "user", "hello")
+        failing = MagicMock()
+        failing.complete.side_effect = RuntimeError("connection error")
+
+        assert daily_note(store, session.id, workspace, lambda mc: failing, config) is False
+        assert store.daily_note_at(session.id) is None
+
+    def test_idle_session_is_never_due(self, tmp_path):
+        from faffmonkey.runtime.compaction import daily_note_due
+        _, store, session, config = self._session(tmp_path)
+        assert not daily_note_due(store, session.id, config.daily_note)
+        store.append_message(session.id, "assistant", "cron delivery with no user turn")
+        assert not daily_note_due(store, session.id, config.daily_note)
+
+    def test_due_after_enough_turns_or_enough_time(self, tmp_path):
+        from datetime import timezone as tz
+        from faffmonkey.runtime.compaction import daily_note_due
+        _, store, session, config = self._session(tmp_path)
+        now = datetime(2026, 8, 25, 12, 0, tzinfo=tz.utc)
+
+        store.append_message(
+            session.id, "user", "one",
+            timestamp=(now - timedelta(minutes=30)).isoformat(),
+        )
+        assert not daily_note_due(store, session.id, config.daily_note, now=now)
+        assert daily_note_due(
+            store, session.id, config.daily_note, now=now + timedelta(minutes=31),
+        )
+
+        store.append_message(session.id, "user", "two", timestamp=(now - timedelta(minutes=20)).isoformat())
+        store.append_message(session.id, "user", "three", timestamp=(now - timedelta(minutes=10)).isoformat())
+        assert daily_note_due(store, session.id, config.daily_note, now=now)
+
+    def test_only_conversation_since_the_last_note_is_sent(self, tmp_path):
+        from faffmonkey.runtime.compaction import daily_note
+        workspace, store, session, config = self._session(tmp_path)
+        store.append_message(session.id, "user", "first hour")
+        provider = FauxProvider([
+            faux_response(text="nothing"), faux_response(text="nothing"),
+        ])
+        daily_note(store, session.id, workspace, lambda mc: provider, config)
+        store.append_message(session.id, "user", "second hour")
+        store.append_message(
+            session.id, "tool", "tool output", tool_call_id="c1",
+        )
+
+        daily_note(store, session.id, workspace, lambda mc: provider, config)
+
+        sent = [m.content for m in provider.calls[1].messages if m.role != "system"]
+        assert sent == ["second hour"]

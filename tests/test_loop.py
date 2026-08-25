@@ -2662,3 +2662,36 @@ class TestModelProviderSwitch:
         raw = json.loads((tmp_path / "config.json").read_text())["models"]["main"]
         assert raw["api_key_env"] == "VENICE_API_KEY"
         assert raw["base_url"] == "https://api.venice.ai/api/v1"
+
+
+class TestDailyNoteFromTheLoop:
+    """2026-08-25: nothing reached the daily log in a day of chat. The
+    loop asks for a note itself once enough turns have passed."""
+
+    def test_note_is_requested_after_every_turns(self, tmp_path):
+        from faffmonkey.config import DailyNoteConfig
+        provider = _make_provider("reply")
+        loop = AgentLoop(
+            resolve_provider=lambda m: provider,
+            config=_make_config(daily_note=DailyNoteConfig(every_turns=3, every_minutes=60)),
+            channel=NoopChannel(),
+            db_path=tmp_path / "state" / "sessions.db",
+            channel_id="cli",
+            workspace=tmp_path / "workspace",
+        )
+        (tmp_path / "workspace").mkdir()
+
+        loop.handle_message("one")
+        loop.handle_message("two")
+        assert provider.complete.call_count == 2
+        assert loop._store.daily_note_at(loop._session_id) is None
+
+        loop.handle_message("three")
+
+        assert provider.complete.call_count == 4
+        note_request = provider.complete.call_args[0][0]
+        assert [t["function"]["name"] for t in note_request.tools] == ["daily_note"]
+        assert [m.content for m in note_request.messages if m.role == "user"] == [
+            "one", "two", "three",
+        ]
+        assert loop._store.daily_note_at(loop._session_id) is not None

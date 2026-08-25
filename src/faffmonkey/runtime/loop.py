@@ -683,6 +683,28 @@ class AgentLoop:
         except Exception:
             logger.exception("compaction failed; continuing with the turn")
 
+    def _maybe_daily_note(self) -> None:
+        """Record the day from the loop, not from the model's goodwill.
+
+        AGENTS.md asked the agent to append to today's log as things
+        happened; over a full day of conversation it never did once, and
+        the evening job that was meant to catch what it missed failed on
+        a provider error, so the day was lost. Runs after the reply for
+        the same reason compaction does.
+        """
+        if not (self._store and self._session_id and self._workspace):
+            return
+        from faffmonkey.runtime.compaction import daily_note, daily_note_due
+
+        try:
+            if daily_note_due(self._store, self._session_id, self.config.daily_note):
+                daily_note(
+                    self._store, self._session_id, self._workspace,
+                    self.resolve_provider, self.config,
+                )
+        except Exception:
+            logger.exception("daily note failed; continuing with the turn")
+
     def _live_image_cutoff(self) -> int:
         """Index of the last user message: only its images are live.
 
@@ -1151,6 +1173,7 @@ class AgentLoop:
         result = self._complete(model_config)
 
         self._maybe_compact()
+        self._maybe_daily_note()
 
         return result
 

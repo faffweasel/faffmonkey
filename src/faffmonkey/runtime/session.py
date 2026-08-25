@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     channel_id TEXT NOT NULL,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    daily_note_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_active
@@ -102,6 +103,13 @@ class SessionStore:
             cursor.execute("ALTER TABLE messages ADD COLUMN images TEXT")
             self._conn.commit()
             logger.info("added messages.images column")
+        session_columns = {
+            row[1] for row in cursor.execute("PRAGMA table_info(sessions)").fetchall()
+        }
+        if "sessions" in tables and "daily_note_at" not in session_columns:
+            cursor.execute("ALTER TABLE sessions ADD COLUMN daily_note_at TEXT")
+            self._conn.commit()
+            logger.info("added sessions.daily_note_at column")
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
@@ -256,6 +264,22 @@ class SessionStore:
         if not self._in_transaction:
             self._conn.commit()
         logger.info("deactivated session %s", session_id)
+
+    def daily_note_at(self, session_id: str) -> str | None:
+        """Timestamp of the last message covered by a daily note, or None
+        when nothing in this session has been noted yet."""
+        row = self._conn.execute(
+            "SELECT daily_note_at FROM sessions WHERE id = ?", (session_id,),
+        ).fetchone()
+        return row[0] if row else None
+
+    def set_daily_note_at(self, session_id: str, timestamp: str) -> None:
+        self._conn.execute(
+            "UPDATE sessions SET daily_note_at = ? WHERE id = ?",
+            (timestamp, session_id),
+        )
+        if not self._in_transaction:
+            self._conn.commit()
 
     @property
     def db_path(self) -> Path:

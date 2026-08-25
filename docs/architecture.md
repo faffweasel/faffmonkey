@@ -228,6 +228,24 @@ stub error result, timestamped one microsecond after the assistant
 message it belongs to, because history is ordered by timestamp and the
 stub must sit beside its call.
 
+### Daily note
+
+Recording the day is the loop's job, not the model's. After each reply,
+`daily_note_due` checks the user turns since the last note (the cursor
+is `sessions.daily_note_at`, the timestamp of the last message noted,
+so it survives restarts and is shared by every loop on the session).
+When `every_turns` have accumulated or `every_minutes` have passed
+since the last note, whichever first, `daily_note` sends the user and
+assistant text since the cursor to the compaction-routed model with a
+single tool, `daily_note(content)`. The runtime appends the content,
+prefixed with the local time, to `memory/daily/<today>.md` in the
+configured timezone; the model never chooses the path and nothing is
+ever overwritten. No tool call means nothing worth keeping; the cursor
+still advances. Nothing else changes: no compaction, no new session,
+history untouched. Idle sessions make no calls. The evening job's full
+flush remains the detailed write-up; the note is what survives when it
+fails.
+
 ### Goal loop
 
 `/goal <text>` starts lightweight autonomous execution: each turn
@@ -483,7 +501,9 @@ every heartbeat.
   into the template's skeleton (key facts, active projects, key
   people, lessons). Not the source of truth.
 - **Daily logs** (`memory/daily/YYYY-MM-DD.md`): the detailed record; today
-  and yesterday auto-load into context.
+  and yesterday auto-load into context. Written by the loop's daily
+  note (see Compaction) and the memory flush; the agent writes to them
+  directly only when asked.
 - **Person and project files** (`memory/person/`, `memory/project/`):
   created as needed, found via memory-search, not auto-loaded.
 - **sessions.db**: conversation history; disposable without losing
@@ -567,8 +587,8 @@ container's egress is the real limit on exfiltration.
 
 - **state/config.json**: timezone, model slots and routing,
   fallback_models, channels (with allowed_users), heartbeat block,
-  compaction parameters, search and voice seam config, tool
-  permissions and shell_preapproved. Validation lives in `config.py`
+  compaction parameters, daily_note interval, search and voice seam
+  config, tool permissions and shell_preapproved. Validation lives in `config.py`
   and is strict: bad api_key_env naming, insecure base_urls, wrong
   types, and security-typo'd keys are ConfigErrors.
 - **state/.env**: secrets only, loaded as environment variables.

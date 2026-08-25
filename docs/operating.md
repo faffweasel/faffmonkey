@@ -222,8 +222,12 @@ file per day; today and yesterday load into every session), and
 skill). Everything you say in conversation beats what the files say,
 and the agent corrects the files rather than arguing with them.
 
-How a day gets recorded: the agent appends to today's daily log as
-things happen (`AGENTS.md` tells it to); the `evening` job reviews the
+How a day gets recorded: the loop itself keeps today's daily log. After
+every ten user turns or every hour of conversation (`daily_note` in
+config.json: `every_turns`, `every_minutes`), the cheap model reads the
+messages since the last note and, if anything is worth keeping, the
+runtime appends a timestamped line to today's log; a quiet hour costs no
+call, and the model never picks the file. The `evening` job reviews the
 day and the memory flush that follows writes anything missed to the
 daily log, `MEMORY.md` and person or project files, then starts a fresh
 session; the `morning` job creates the next day's log and reads

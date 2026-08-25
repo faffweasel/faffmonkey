@@ -356,3 +356,41 @@ class TestCrossThreadSafety:
         store_b.close()
 
 
+
+
+class TestDailyNoteCursor:
+    def test_existing_database_gains_the_column(self, db_path):
+        """The cursor column is additive: a database from before it exists
+        must open and gain it, the same way messages.images did."""
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript("""
+            CREATE TABLE schema_version (version INTEGER NOT NULL);
+            INSERT INTO schema_version (version) VALUES (1);
+            CREATE TABLE sessions (
+                id TEXT PRIMARY KEY, type TEXT NOT NULL, channel_id TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+            );
+            CREATE TABLE messages (
+                id TEXT PRIMARY KEY, session_id TEXT NOT NULL, role TEXT NOT NULL,
+                content TEXT, tool_calls TEXT, tool_call_id TEXT,
+                timestamp TEXT NOT NULL, images TEXT
+            );
+        """)
+        conn.commit()
+        conn.close()
+
+        store = SessionStore(db_path)
+        session = store.get_or_create_main_session("cli")
+        assert store.daily_note_at(session.id) is None
+        store.set_daily_note_at(session.id, "2026-08-25T12:00:00+00:00")
+        assert store.daily_note_at(session.id) == "2026-08-25T12:00:00+00:00"
+        store.close()
+
+    def test_cursor_is_per_session(self, store):
+        a = store.get_or_create_main_session("cli")
+        store.set_daily_note_at(a.id, "2026-08-25T12:00:00+00:00")
+        store.deactivate_session(a.id)
+        b = store.get_or_create_main_session("cli")
+        assert b.id != a.id
+        assert store.daily_note_at(b.id) is None

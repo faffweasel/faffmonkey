@@ -146,6 +146,17 @@ class CompactionConfig:
 
 
 @dataclass
+class DailyNoteConfig:
+    """How often the loop asks the cheap model for a daily-log note.
+
+    Whichever comes first: this many user turns since the last note, or
+    this many minutes since it. Nothing fires while nobody is talking.
+    """
+    every_turns: int = 10
+    every_minutes: int = 60
+
+
+@dataclass
 class ChannelConfig:
     enabled: bool
     module: str = ""
@@ -186,6 +197,7 @@ class Config:
     channels: dict[str, ChannelConfig]
     tool_permissions: dict[str, str]
     shell_preapproved: list[str] = field(default_factory=list)
+    daily_note: DailyNoteConfig = field(default_factory=DailyNoteConfig)
     search: SearchConfig = field(default_factory=SearchConfig)
     voice: VoiceConfig = field(default_factory=VoiceConfig)
 
@@ -289,6 +301,20 @@ def _parse_heartbeat(raw: dict | None) -> HeartbeatConfig:
         ack_max_chars=ack_max_chars,
         enabled=enabled,
     )
+
+
+def _parse_daily_note(raw: dict | None) -> DailyNoteConfig:
+    if raw is None:
+        return DailyNoteConfig()
+    if not isinstance(raw, dict):
+        raise ConfigError("'daily_note' must be a JSON object")
+    result = DailyNoteConfig()
+    for key in ("every_turns", "every_minutes"):
+        value = raw.get(key, getattr(result, key))
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            raise ConfigError(f"daily_note {key} must be a positive integer")
+        setattr(result, key, value)
+    return result
 
 
 def _parse_compaction(raw: dict | None) -> CompactionConfig:
@@ -396,6 +422,7 @@ def _parse_channels(raw: dict | None) -> dict[str, ChannelConfig]:
 _KNOWN_CONFIG_KEYS = frozenset({
     "models", "routing", "fallback_models", "timezone",
     "heartbeat", "compaction", "channels", "tools", "search", "voice",
+    "daily_note",
 })
 
 _HARD_ERROR_UNKNOWN_KEYS = frozenset({
@@ -540,4 +567,5 @@ def load_config(path: Path) -> Config:
         shell_preapproved=shell_preapproved,
         search=search,
         voice=voice,
+        daily_note=_parse_daily_note(raw.get("daily_note")),
     )

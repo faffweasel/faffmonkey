@@ -1206,3 +1206,21 @@ class TestGroupPolicy:
         })
         with pytest.raises(ConfigError, match="group_policy must be one of"):
             load_config(path)
+
+
+class TestDailyNoteConfig:
+    def test_defaults_when_absent(self, tmp_path):
+        from faffmonkey.config import load_config
+        config = load_config(_write_config(tmp_path))
+        assert (config.daily_note.every_turns, config.daily_note.every_minutes) == (10, 60)
+
+    def test_block_overrides_per_key(self, tmp_path):
+        from faffmonkey.config import load_config
+        config = load_config(_write_config(tmp_path, daily_note={"every_minutes": 30}))
+        assert (config.daily_note.every_turns, config.daily_note.every_minutes) == (10, 30)
+
+    @pytest.mark.parametrize("bad", [0, -1, True, "10", 1.5])
+    def test_rejects_non_positive_intervals(self, tmp_path, bad):
+        from faffmonkey.config import ConfigError, load_config
+        with pytest.raises(ConfigError):
+            load_config(_write_config(tmp_path, daily_note={"every_turns": bad}))

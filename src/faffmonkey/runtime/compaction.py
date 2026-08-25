@@ -9,7 +9,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from faffmonkey.config import CompactionConfig, Config, ConfigError, ModelConfig
+from faffmonkey.config import CompactionConfig, Config, ConfigError, DailyNoteConfig, ModelConfig
 from faffmonkey.runtime.session import SessionStore
 from faffmonkey.runtime.tokens import count_tokens
 from faffmonkey.seams.provider import Provider
@@ -234,6 +234,156 @@ def memory_flush(
 
     logger.error("memory_flush: all models failed, proceeding without flush")
     return False
+
+
+MAX_DAILY_NOTE_CHARS = 2000
+
+_DAILY_NOTE_PROMPT = (
+    "These are the latest messages of a conversation between the user and "
+    "their assistant. If anything in them belongs in today's daily log (a "
+    "decision, a fact about the user, a task done or promised, a "
+    "preference, something that happened), call daily_note with one or "
+    "two short lines saying what. Write in the third person about the "
+    "user and the assistant. If nothing is worth keeping, do not call the "
+    "tool."
+)
+
+_DAILY_NOTE_TOOL_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "daily_note",
+        "description": "Append a short note to today's daily log.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "One or two short lines worth keeping.",
+                },
+            },
+            "required": ["content"],
+        },
+    },
+}
+
+
+def _pending_since_note(
+    session_store: SessionStore, session_id: str,
+) -> list[Message]:
+    """Conversation since the last daily note: user and assistant text
+    only. Tool traffic is noise for a note and may start mid-exchange."""
+    cursor = session_store.daily_note_at(session_id)
+    return [
+        m for m in session_store.get_history(session_id)
+        if m.role in ("user", "assistant")
+        and m.content
+        and m.timestamp is not None
+        and (cursor is None or m.timestamp > cursor)
+    ]
+
+
+def daily_note_due(
+    session_store: SessionStore,
+    session_id: str,
+    config: DailyNoteConfig,
+    now: datetime | None = None,
+) -> bool:
+    """Whether the loop should ask for a daily note this turn.
+
+    Fires on whichever comes first, a run of user turns or an hour of
+    them, and never when nobody has said anything since the last note:
+    an idle session costs no calls.
+    """
+    pending = _pending_since_note(session_store, session_id)
+    user_turns = [m for m in pending if m.role == "user"]
+    if not user_turns:
+        return False
+    if len(user_turns) >= config.every_turns:
+        return True
+    since = session_store.daily_note_at(session_id) or user_turns[0].timestamp
+    try:
+        since_dt = datetime.fromisoformat(since)
+    except ValueError:
+        return True
+    if since_dt.tzinfo is None:
+        since_dt = since_dt.replace(tzinfo=timezone.utc)
+    now = now or datetime.now(timezone.utc)
+    return now - since_dt >= timedelta(minutes=config.every_minutes)
+
+
+def _append_daily_note(workspace: Path, content: str, now: datetime) -> Path:
+    """The runtime picks the file (today, in the user's timezone) and only
+    ever appends. The model wrote to yesterday's log when it was left to
+    choose, because that was the file with content in it."""
+    path = workspace / "memory" / "daily" / f"{now.date().isoformat()}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = content.strip().splitlines()
+    body = f"- {now.strftime('%H:%M')} " + "\n  ".join(line.strip() for line in lines if line.strip())
+    with path.open("a", encoding="utf-8") as f:
+        if path.stat().st_size == 0:
+            f.write(f"# {now.date().isoformat()}\n")
+        f.write(f"\n{body}\n")
+    return path
+
+
+def daily_note(
+    session_store: SessionStore,
+    session_id: str,
+    workspace: Path,
+    provider_fn: Callable[[ModelConfig], Provider],
+    config: Config,
+) -> bool:
+    """Ask the cheap model whether the conversation since the last note
+    holds anything for today's daily log, and append it if so.
+
+    Storage only: history is untouched, no compaction, no new session.
+    The cursor advances on any answer, including "nothing to keep", so
+    a quiet stretch is not re-read every turn. A provider failure leaves
+    the cursor where it was and the next due turn tries again.
+    """
+    pending = _pending_since_note(session_store, session_id)
+    if not pending:
+        return True
+    latest = max(m.timestamp for m in pending if m.timestamp is not None)
+    messages = [
+        Message(role="system", content=_DAILY_NOTE_PROMPT),
+        *[Message(role=m.role, content=m.content) for m in pending],
+    ]
+    # The cheap slot first; the conversation model if the config has no
+    # compaction routing, the same fall-through memory_flush uses.
+    response = None
+    for task in ("compaction", "conversation"):
+        try:
+            model_config = config.resolve_model(task)
+        except ConfigError:
+            continue
+        try:
+            provider = provider_fn(model_config)
+            response = provider.complete(CompletionRequest(
+                messages=messages,
+                model=model_config.model,
+                tools=[_DAILY_NOTE_TOOL_SCHEMA],
+            ))
+            break
+        except Exception as e:
+            logger.warning("daily_note: %s model failed: %s", task, e)
+    if response is None:
+        return False
+
+    now = datetime.now(config.timezone)
+    for tc in response.tool_calls or []:
+        if tc.name != "daily_note":
+            logger.warning("daily_note: ignoring tool call %r", tc.name)
+            continue
+        content = tc.arguments.get("content", "")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        if len(content) > MAX_DAILY_NOTE_CHARS:
+            content = content[:MAX_DAILY_NOTE_CHARS]
+        path = _append_daily_note(workspace, content, now)
+        logger.info("daily_note: appended to %s", path.name)
+    session_store.set_daily_note_at(session_id, latest)
+    return True
 
 
 def should_compact(
