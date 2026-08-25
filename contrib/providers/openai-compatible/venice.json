@@ -1,0 +1,8 @@
+{
+  "name": "Venice",
+  "provider_key": "venice",
+  "base_url": "https://api.venice.ai/api/v1",
+  "api_key_env": "VENICE_API_KEY",
+  "default_model": "qwen-3-8-27b",
+  "notes": "Get your API key from the Venice dashboard."
+}

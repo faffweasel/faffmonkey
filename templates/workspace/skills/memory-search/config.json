@@ -1,0 +1,20 @@
+{
+  "index_paths": [
+    "memory/",
+    "LEARNINGS.md"
+  ],
+  "max_chunk_chars": 1600,
+  "search_top_k": 10,
+  "recency_half_life_days": 30,
+  "embedding": {
+    "provider": "none",
+    "providers": {
+      "ollama": {
+        "endpoint": "http://localhost:11434/api/embed",
+        "model": "nomic-embed-text",
+        "apiKeyEnvVar": "",
+        "format": "ollama"
+      }
+    }
+  }
+}

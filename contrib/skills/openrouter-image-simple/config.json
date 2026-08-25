@@ -1,0 +1,11 @@
+{
+  "generation": {
+    "model": "google/gemini-3.1-flash-image",
+    "aliases": {
+      "nano-banana-2": "google/gemini-3.1-flash-image"
+    }
+  },
+  "vision": {
+    "model": "google/gemini-3.6-flash"
+  }
+}

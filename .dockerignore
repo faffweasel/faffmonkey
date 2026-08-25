@@ -1,0 +1,9 @@
+.git
+state/
+*.log
+__pycache__/
+.venv/
+*.pyc
+.pytest_cache/
+backups/
+**/.DS_Store

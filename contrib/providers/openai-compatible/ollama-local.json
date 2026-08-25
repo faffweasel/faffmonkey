@@ -1,0 +1,8 @@
+{
+  "name": "Ollama (local)",
+  "provider_key": "ollama-local",
+  "base_url": "http://localhost:11434/v1",
+  "api_key_env": "",
+  "default_model": "llama3",
+  "notes": "Local Ollama instance. No API key needed."
+}

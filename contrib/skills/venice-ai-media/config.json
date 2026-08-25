@@ -1,0 +1,11 @@
+{
+  "image": {
+    "model": "qwen-image-3"
+  },
+  "edit": {
+    "model": "firered-image-edit-1.1"
+  },
+  "video": {
+    "model": "wan-3-0-image-to-video"
+  }
+}

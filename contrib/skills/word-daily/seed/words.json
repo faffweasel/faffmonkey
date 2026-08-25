@@ -1,0 +1,2551 @@
+{
+  "_meta": {
+    "version": 1,
+    "learning_language": "Vietnamese",
+    "bridge_language": "Chinese",
+    "description": "Example wordlist: 300 practical Vietnamese words with Chinese translations. Replace with your own language pair (see HUMAN.md).",
+    "levels": [
+      "beginner",
+      "elementary",
+      "intermediate"
+    ]
+  },
+  "words": [
+    {
+      "id": "g01",
+      "pronunciation": "sin jào",
+      "category": "greetings",
+      "level": "beginner",
+      "notes": "Universal greeting, polite",
+      "word": "xin chào",
+      "translation": "你好"
+    },
+    {
+      "id": "g02",
+      "pronunciation": "gảm ern",
+      "category": "greetings",
+      "level": "beginner",
+      "word": "cảm ơn",
+      "translation": "谢谢"
+    },
+    {
+      "id": "g03",
+      "pronunciation": "sin lỗi",
+      "category": "greetings",
+      "level": "beginner",
+      "word": "xin lỗi",
+      "translation": "对不起"
+    },
+    {
+      "id": "g04",
+      "pronunciation": "tạm biệt",
+      "category": "greetings",
+      "level": "beginner",
+      "word": "tạm biệt",
+      "translation": "再见"
+    },
+    {
+      "id": "g05",
+      "pronunciation": "vưng",
+      "category": "greetings",
+      "level": "beginner",
+      "notes": "Northern polite 'yes'",
+      "word": "vâng",
+      "translation": "是（敬语）"
+    },
+    {
+      "id": "g06",
+      "pronunciation": "khohng",
+      "category": "greetings",
+      "level": "beginner",
+      "word": "không",
+      "translation": "不/没有"
+    },
+    {
+      "id": "g07",
+      "pronunciation": "jào buổi sáng",
+      "category": "greetings",
+      "level": "beginner",
+      "word": "chào buổi sáng",
+      "translation": "早上好"
+    },
+    {
+      "id": "g08",
+      "pronunciation": "hẹn gặp lại",
+      "category": "greetings",
+      "level": "elementary",
+      "word": "hẹn gặp lại",
+      "translation": "下次见"
+    },
+    {
+      "id": "g09",
+      "pronunciation": "khohng sao",
+      "category": "greetings",
+      "level": "beginner",
+      "word": "không sao",
+      "translation": "没关系"
+    },
+    {
+      "id": "g10",
+      "pronunciation": "sin fép",
+      "category": "greetings",
+      "level": "elementary",
+      "notes": "Used before asking permission or passing by",
+      "word": "xin phép",
+      "translation": "请允许/打扰了"
+    },
+    {
+      "id": "g11",
+      "pronunciation": "khohng gó gì",
+      "category": "greetings",
+      "level": "beginner",
+      "notes": "You're welcome",
+      "word": "không có gì",
+      "translation": "不客气"
+    },
+    {
+      "id": "g12",
+      "pronunciation": "khỏe khohng",
+      "category": "greetings",
+      "level": "beginner",
+      "word": "khỏe không",
+      "translation": "你好吗"
+    },
+    {
+      "id": "p01",
+      "pronunciation": "toy",
+      "category": "pronouns",
+      "level": "beginner",
+      "word": "tôi",
+      "translation": "我"
+    },
+    {
+      "id": "p02",
+      "pronunciation": "bạn",
+      "category": "pronouns",
+      "level": "beginner",
+      "notes": "For peers/same age",
+      "word": "bạn",
+      "translation": "你（同龄）"
+    },
+    {
+      "id": "p03",
+      "pronunciation": "anh",
+      "category": "pronouns",
+      "level": "beginner",
+      "notes": "Older male, also 'you' to husband/boyfriend",
+      "word": "anh",
+      "translation": "哥/你（对年长男性）"
+    },
+    {
+      "id": "p04",
+      "pronunciation": "jị",
+      "category": "pronouns",
+      "level": "beginner",
+      "word": "chị",
+      "translation": "姐/你（对年长女性）"
+    },
+    {
+      "id": "p05",
+      "pronunciation": "em",
+      "category": "pronouns",
+      "level": "beginner",
+      "notes": "Younger person, term of endearment",
+      "word": "em",
+      "translation": "弟/妹/你（对年轻人）"
+    },
+    {
+      "id": "p06",
+      "pronunciation": "júng toy",
+      "category": "pronouns",
+      "level": "elementary",
+      "word": "chúng tôi",
+      "translation": "我们（不含对方）"
+    },
+    {
+      "id": "p07",
+      "pronunciation": "họ",
+      "category": "pronouns",
+      "level": "elementary",
+      "word": "họ",
+      "translation": "他们"
+    },
+    {
+      "id": "p08",
+      "pronunciation": "júng ta",
+      "category": "pronouns",
+      "level": "elementary",
+      "word": "chúng ta",
+      "translation": "我们（含对方）"
+    },
+    {
+      "id": "p09",
+      "pronunciation": "nó",
+      "category": "pronouns",
+      "level": "elementary",
+      "word": "nó",
+      "translation": "它/他/她（非正式）"
+    },
+    {
+      "id": "p10",
+      "pronunciation": "ohng",
+      "category": "pronouns",
+      "level": "elementary",
+      "notes": "Elderly man, very respectful",
+      "word": "ông",
+      "translation": "爷爷/您（对老年男性）"
+    },
+    {
+      "id": "p11",
+      "pronunciation": "bà",
+      "category": "pronouns",
+      "level": "elementary",
+      "word": "bà",
+      "translation": "奶奶/您（对老年女性）"
+    },
+    {
+      "id": "q01",
+      "pronunciation": "gái gì",
+      "category": "questions",
+      "level": "beginner",
+      "word": "cái gì",
+      "translation": "什么"
+    },
+    {
+      "id": "q02",
+      "pronunciation": "ai",
+      "category": "questions",
+      "level": "beginner",
+      "word": "ai",
+      "translation": "谁"
+    },
+    {
+      "id": "q03",
+      "pronunciation": "ở đâu",
+      "category": "questions",
+      "level": "beginner",
+      "word": "ở đâu",
+      "translation": "在哪里"
+    },
+    {
+      "id": "q04",
+      "pronunciation": "tại sao",
+      "category": "questions",
+      "level": "beginner",
+      "word": "tại sao",
+      "translation": "为什么"
+    },
+    {
+      "id": "q05",
+      "pronunciation": "làm sao",
+      "category": "questions",
+      "level": "elementary",
+      "word": "làm sao",
+      "translation": "怎么"
+    },
+    {
+      "id": "q06",
+      "pronunciation": "khi nào",
+      "category": "questions",
+      "level": "beginner",
+      "word": "khi nào",
+      "translation": "什么时候"
+    },
+    {
+      "id": "q07",
+      "pronunciation": "bao nhiêu",
+      "category": "questions",
+      "level": "beginner",
+      "word": "bao nhiêu",
+      "translation": "多少"
+    },
+    {
+      "id": "q08",
+      "pronunciation": "gái nào",
+      "category": "questions",
+      "level": "elementary",
+      "word": "cái nào",
+      "translation": "哪个"
+    },
+    {
+      "id": "q09",
+      "pronunciation": "gó fải khohng",
+      "category": "questions",
+      "level": "elementary",
+      "notes": "Yes/no question pattern",
+      "word": "có phải không",
+      "translation": "是不是"
+    },
+    {
+      "id": "gw01",
+      "pronunciation": "và",
+      "category": "grammar",
+      "level": "beginner",
+      "notes": "Most common word in Vietnamese",
+      "word": "và",
+      "translation": "和/与"
+    },
+    {
+      "id": "gw02",
+      "pronunciation": "nhưng",
+      "category": "grammar",
+      "level": "beginner",
+      "word": "nhưng",
+      "translation": "但是"
+    },
+    {
+      "id": "gw03",
+      "pronunciation": "vì",
+      "category": "grammar",
+      "level": "elementary",
+      "word": "vì",
+      "translation": "因为"
+    },
+    {
+      "id": "gw04",
+      "pronunciation": "nếu",
+      "category": "grammar",
+      "level": "elementary",
+      "word": "nếu",
+      "translation": "如果"
+    },
+    {
+      "id": "gw05",
+      "pronunciation": "hay",
+      "category": "grammar",
+      "level": "beginner",
+      "word": "hay",
+      "translation": "或者/还是"
+    },
+    {
+      "id": "gw06",
+      "pronunciation": "zất",
+      "category": "grammar",
+      "level": "beginner",
+      "word": "rất",
+      "translation": "很/非常"
+    },
+    {
+      "id": "gw07",
+      "pronunciation": "gũng",
+      "category": "grammar",
+      "level": "beginner",
+      "word": "cũng",
+      "translation": "也"
+    },
+    {
+      "id": "gw08",
+      "pronunciation": "đã",
+      "category": "grammar",
+      "level": "elementary",
+      "notes": "Past tense marker",
+      "word": "đã",
+      "translation": "已经（过去时）"
+    },
+    {
+      "id": "gw09",
+      "pronunciation": "sẽ",
+      "category": "grammar",
+      "level": "elementary",
+      "notes": "Future tense marker",
+      "word": "sẽ",
+      "translation": "将要（将来时）"
+    },
+    {
+      "id": "gw10",
+      "pronunciation": "đang",
+      "category": "grammar",
+      "level": "elementary",
+      "notes": "Progressive marker — đang ăn = eating right now",
+      "word": "đang",
+      "translation": "正在（进行时）"
+    },
+    {
+      "id": "gw11",
+      "pronunciation": "được",
+      "category": "grammar",
+      "level": "beginner",
+      "notes": "Permission, ability, or passive voice",
+      "word": "được",
+      "translation": "可以/被"
+    },
+    {
+      "id": "gw12",
+      "pronunciation": "là",
+      "category": "grammar",
+      "level": "beginner",
+      "word": "là",
+      "translation": "是"
+    },
+    {
+      "id": "gw13",
+      "pronunciation": "gủa",
+      "category": "grammar",
+      "level": "beginner",
+      "word": "của",
+      "translation": "的（所属）"
+    },
+    {
+      "id": "gw14",
+      "pronunciation": "ở",
+      "category": "grammar",
+      "level": "beginner",
+      "word": "ở",
+      "translation": "在"
+    },
+    {
+      "id": "gw15",
+      "pronunciation": "với",
+      "category": "grammar",
+      "level": "beginner",
+      "word": "với",
+      "translation": "跟/和"
+    },
+    {
+      "id": "gw16",
+      "pronunciation": "này",
+      "category": "grammar",
+      "level": "beginner",
+      "word": "này",
+      "translation": "这"
+    },
+    {
+      "id": "gw17",
+      "pronunciation": "kia",
+      "category": "grammar",
+      "level": "beginner",
+      "word": "kia",
+      "translation": "那"
+    },
+    {
+      "id": "gw18",
+      "pronunciation": "rồi",
+      "category": "grammar",
+      "level": "elementary",
+      "notes": "Indicates completion — ăn rồi = already eaten",
+      "word": "rồi",
+      "translation": "了/已经"
+    },
+    {
+      "id": "n01",
+      "pronunciation": "một",
+      "category": "numbers",
+      "level": "beginner",
+      "word": "một",
+      "translation": "一"
+    },
+    {
+      "id": "n02",
+      "pronunciation": "hai",
+      "category": "numbers",
+      "level": "beginner",
+      "word": "hai",
+      "translation": "二"
+    },
+    {
+      "id": "n03",
+      "pronunciation": "ba",
+      "category": "numbers",
+      "level": "beginner",
+      "word": "ba",
+      "translation": "三"
+    },
+    {
+      "id": "n04",
+      "pronunciation": "bốn",
+      "category": "numbers",
+      "level": "beginner",
+      "word": "bốn",
+      "translation": "四"
+    },
+    {
+      "id": "n05",
+      "pronunciation": "năm",
+      "category": "numbers",
+      "level": "beginner",
+      "word": "năm",
+      "translation": "五"
+    },
+    {
+      "id": "n06",
+      "pronunciation": "sáu",
+      "category": "numbers",
+      "level": "beginner",
+      "word": "sáu",
+      "translation": "六"
+    },
+    {
+      "id": "n07",
+      "pronunciation": "bảy",
+      "category": "numbers",
+      "level": "beginner",
+      "word": "bảy",
+      "translation": "七"
+    },
+    {
+      "id": "n08",
+      "pronunciation": "tám",
+      "category": "numbers",
+      "level": "beginner",
+      "word": "tám",
+      "translation": "八"
+    },
+    {
+      "id": "n09",
+      "pronunciation": "jín",
+      "category": "numbers",
+      "level": "beginner",
+      "word": "chín",
+      "translation": "九"
+    },
+    {
+      "id": "n10",
+      "pronunciation": "mười",
+      "category": "numbers",
+      "level": "beginner",
+      "word": "mười",
+      "translation": "十"
+    },
+    {
+      "id": "n11",
+      "pronunciation": "trăm",
+      "category": "numbers",
+      "level": "elementary",
+      "word": "trăm",
+      "translation": "百"
+    },
+    {
+      "id": "n12",
+      "pronunciation": "ngìn",
+      "category": "numbers",
+      "level": "elementary",
+      "notes": "Northern; 'ngàn' in the south",
+      "word": "nghìn",
+      "translation": "千"
+    },
+    {
+      "id": "n13",
+      "pronunciation": "triệu",
+      "category": "numbers",
+      "level": "intermediate",
+      "notes": "Important for prices — 50 triệu = 50 million VND",
+      "word": "triệu",
+      "translation": "百万"
+    },
+    {
+      "id": "f01",
+      "pronunciation": "fở",
+      "category": "food",
+      "level": "beginner",
+      "notes": "Vietnam's national dish",
+      "word": "phở",
+      "translation": "越南河粉"
+    },
+    {
+      "id": "f02",
+      "pronunciation": "germ",
+      "category": "food",
+      "level": "beginner",
+      "word": "cơm",
+      "translation": "米饭"
+    },
+    {
+      "id": "f03",
+      "pronunciation": "nước",
+      "category": "food",
+      "level": "beginner",
+      "word": "nước",
+      "translation": "水"
+    },
+    {
+      "id": "f04",
+      "pronunciation": "gà feh",
+      "category": "food",
+      "level": "beginner",
+      "word": "cà phê",
+      "translation": "咖啡"
+    },
+    {
+      "id": "f05",
+      "pronunciation": "trà",
+      "category": "food",
+      "level": "beginner",
+      "word": "trà",
+      "translation": "茶"
+    },
+    {
+      "id": "f06",
+      "pronunciation": "bia",
+      "category": "food",
+      "level": "beginner",
+      "word": "bia",
+      "translation": "啤酒"
+    },
+    {
+      "id": "f07",
+      "pronunciation": "bánh mì",
+      "category": "food",
+      "level": "beginner",
+      "word": "bánh mì",
+      "translation": "越南法棍面包"
+    },
+    {
+      "id": "f08",
+      "pronunciation": "bún jả",
+      "category": "food",
+      "level": "beginner",
+      "notes": "Hanoi specialty — Obama ate it here in 2016",
+      "word": "bún chả",
+      "translation": "烤肉米粉"
+    },
+    {
+      "id": "f09",
+      "pronunciation": "gà",
+      "category": "food",
+      "level": "beginner",
+      "word": "gà",
+      "translation": "鸡/鸡肉"
+    },
+    {
+      "id": "f10",
+      "pronunciation": "thịt bò",
+      "category": "food",
+      "level": "beginner",
+      "word": "thịt bò",
+      "translation": "牛肉"
+    },
+    {
+      "id": "f11",
+      "pronunciation": "thịt lợn",
+      "category": "food",
+      "level": "beginner",
+      "notes": "Northern; 'thịt heo' in the south",
+      "word": "thịt lợn",
+      "translation": "猪肉"
+    },
+    {
+      "id": "f12",
+      "pronunciation": "gá",
+      "category": "food",
+      "level": "beginner",
+      "word": "cá",
+      "translation": "鱼"
+    },
+    {
+      "id": "f13",
+      "pronunciation": "zau",
+      "category": "food",
+      "level": "beginner",
+      "word": "rau",
+      "translation": "蔬菜"
+    },
+    {
+      "id": "f14",
+      "pronunciation": "trái kây",
+      "category": "food",
+      "level": "beginner",
+      "word": "trái cây",
+      "translation": "水果"
+    },
+    {
+      "id": "f15",
+      "pronunciation": "ngon",
+      "category": "food",
+      "level": "beginner",
+      "word": "ngon",
+      "translation": "好吃/美味"
+    },
+    {
+      "id": "f16",
+      "pronunciation": "gay",
+      "category": "food",
+      "level": "beginner",
+      "word": "cay",
+      "translation": "辣"
+    },
+    {
+      "id": "f17",
+      "pronunciation": "ngọt",
+      "category": "food",
+      "level": "beginner",
+      "word": "ngọt",
+      "translation": "甜"
+    },
+    {
+      "id": "f18",
+      "pronunciation": "mặn",
+      "category": "food",
+      "level": "elementary",
+      "word": "mặn",
+      "translation": "咸"
+    },
+    {
+      "id": "f19",
+      "pronunciation": "đá",
+      "category": "food",
+      "level": "beginner",
+      "notes": "As in cà phê đá (iced coffee)",
+      "word": "đá",
+      "translation": "冰"
+    },
+    {
+      "id": "f20",
+      "pronunciation": "sữa",
+      "category": "food",
+      "level": "elementary",
+      "word": "sữa",
+      "translation": "牛奶"
+    },
+    {
+      "id": "f21",
+      "pronunciation": "trứng",
+      "category": "food",
+      "level": "elementary",
+      "word": "trứng",
+      "translation": "蛋"
+    },
+    {
+      "id": "f22",
+      "pronunciation": "đường",
+      "category": "food",
+      "level": "elementary",
+      "word": "đường",
+      "translation": "糖"
+    },
+    {
+      "id": "f23",
+      "pronunciation": "muối",
+      "category": "food",
+      "level": "elementary",
+      "word": "muối",
+      "translation": "盐"
+    },
+    {
+      "id": "f24",
+      "pronunciation": "no",
+      "category": "food",
+      "level": "beginner",
+      "word": "no",
+      "translation": "饱"
+    },
+    {
+      "id": "f25",
+      "pronunciation": "đói",
+      "category": "food",
+      "level": "beginner",
+      "word": "đói",
+      "translation": "饿"
+    },
+    {
+      "id": "f26",
+      "pronunciation": "nước mắm",
+      "category": "food",
+      "level": "elementary",
+      "notes": "The soul of Vietnamese cooking",
+      "word": "nước mắm",
+      "translation": "鱼露"
+    },
+    {
+      "id": "f27",
+      "pronunciation": "tohm",
+      "category": "food",
+      "level": "elementary",
+      "word": "tôm",
+      "translation": "虾"
+    },
+    {
+      "id": "f28",
+      "pronunciation": "soy",
+      "category": "food",
+      "level": "elementary",
+      "notes": "Common Hanoi breakfast",
+      "word": "xôi",
+      "translation": "糯米饭"
+    },
+    {
+      "id": "f29",
+      "pronunciation": "jay",
+      "category": "food",
+      "level": "elementary",
+      "notes": "Vegetarian — many Vietnamese eat chay on lunar 1st/15th",
+      "word": "chay",
+      "translation": "素食"
+    },
+    {
+      "id": "f30",
+      "pronunciation": "khát",
+      "category": "food",
+      "level": "beginner",
+      "word": "khát",
+      "translation": "渴"
+    },
+    {
+      "id": "s01",
+      "pronunciation": "gái này",
+      "category": "shopping",
+      "level": "beginner",
+      "word": "cái này",
+      "translation": "这个"
+    },
+    {
+      "id": "s02",
+      "pronunciation": "gái kia",
+      "category": "shopping",
+      "level": "beginner",
+      "word": "cái kia",
+      "translation": "那个"
+    },
+    {
+      "id": "s03",
+      "pronunciation": "bao nhiêu tiền",
+      "category": "shopping",
+      "level": "beginner",
+      "word": "bao nhiêu tiền",
+      "translation": "多少钱"
+    },
+    {
+      "id": "s04",
+      "pronunciation": "đắt quá",
+      "category": "shopping",
+      "level": "beginner",
+      "word": "đắt quá",
+      "translation": "太贵了"
+    },
+    {
+      "id": "s05",
+      "pronunciation": "zẻ",
+      "category": "shopping",
+      "level": "beginner",
+      "word": "rẻ",
+      "translation": "便宜"
+    },
+    {
+      "id": "s06",
+      "pronunciation": "giảm giá",
+      "category": "shopping",
+      "level": "elementary",
+      "word": "giảm giá",
+      "translation": "打折/减价"
+    },
+    {
+      "id": "s07",
+      "pronunciation": "mua",
+      "category": "shopping",
+      "level": "beginner",
+      "word": "mua",
+      "translation": "买"
+    },
+    {
+      "id": "s08",
+      "pronunciation": "bán",
+      "category": "shopping",
+      "level": "elementary",
+      "word": "bán",
+      "translation": "卖"
+    },
+    {
+      "id": "s09",
+      "pronunciation": "tiền",
+      "category": "shopping",
+      "level": "beginner",
+      "word": "tiền",
+      "translation": "钱"
+    },
+    {
+      "id": "s10",
+      "pronunciation": "jợ",
+      "category": "shopping",
+      "level": "beginner",
+      "notes": "Wet market — central to daily life in Hanoi",
+      "word": "chợ",
+      "translation": "市场/菜市场"
+    },
+    {
+      "id": "d01",
+      "pronunciation": "đi thẳng",
+      "category": "directions",
+      "level": "beginner",
+      "word": "đi thẳng",
+      "translation": "直走"
+    },
+    {
+      "id": "d02",
+      "pronunciation": "zẽ trái",
+      "category": "directions",
+      "level": "beginner",
+      "word": "rẽ trái",
+      "translation": "左转"
+    },
+    {
+      "id": "d03",
+      "pronunciation": "zẽ phải",
+      "category": "directions",
+      "level": "beginner",
+      "word": "rẽ phải",
+      "translation": "右转"
+    },
+    {
+      "id": "d04",
+      "pronunciation": "gần",
+      "category": "directions",
+      "level": "beginner",
+      "word": "gần",
+      "translation": "近"
+    },
+    {
+      "id": "d05",
+      "pronunciation": "sa",
+      "category": "directions",
+      "level": "beginner",
+      "word": "xa",
+      "translation": "远"
+    },
+    {
+      "id": "d06",
+      "pronunciation": "đường",
+      "category": "directions",
+      "level": "beginner",
+      "word": "đường",
+      "translation": "路/街道"
+    },
+    {
+      "id": "d07",
+      "pronunciation": "fố",
+      "category": "directions",
+      "level": "elementary",
+      "notes": "Used in Hanoi Old Quarter street names",
+      "word": "phố",
+      "translation": "街（河内老街用）"
+    },
+    {
+      "id": "d08",
+      "pronunciation": "đằng trước",
+      "category": "directions",
+      "level": "elementary",
+      "word": "đằng trước",
+      "translation": "前面"
+    },
+    {
+      "id": "d09",
+      "pronunciation": "đằng sau",
+      "category": "directions",
+      "level": "elementary",
+      "word": "đằng sau",
+      "translation": "后面"
+    },
+    {
+      "id": "d10",
+      "pronunciation": "behn trái",
+      "category": "directions",
+      "level": "elementary",
+      "word": "bên trái",
+      "translation": "左边"
+    },
+    {
+      "id": "d11",
+      "pronunciation": "behn phải",
+      "category": "directions",
+      "level": "elementary",
+      "word": "bên phải",
+      "translation": "右边"
+    },
+    {
+      "id": "t01",
+      "pronunciation": "hohm nay",
+      "category": "time",
+      "level": "beginner",
+      "word": "hôm nay",
+      "translation": "今天"
+    },
+    {
+      "id": "t02",
+      "pronunciation": "ngày mai",
+      "category": "time",
+      "level": "beginner",
+      "word": "ngày mai",
+      "translation": "明天"
+    },
+    {
+      "id": "t03",
+      "pronunciation": "hohm qua",
+      "category": "time",
+      "level": "beginner",
+      "word": "hôm qua",
+      "translation": "昨天"
+    },
+    {
+      "id": "t04",
+      "pronunciation": "bây giờ",
+      "category": "time",
+      "level": "beginner",
+      "word": "bây giờ",
+      "translation": "现在"
+    },
+    {
+      "id": "t05",
+      "pronunciation": "sáng",
+      "category": "time",
+      "level": "beginner",
+      "word": "sáng",
+      "translation": "早上"
+    },
+    {
+      "id": "t06",
+      "pronunciation": "trưa",
+      "category": "time",
+      "level": "beginner",
+      "word": "trưa",
+      "translation": "中午"
+    },
+    {
+      "id": "t07",
+      "pronunciation": "jiều",
+      "category": "time",
+      "level": "beginner",
+      "word": "chiều",
+      "translation": "下午"
+    },
+    {
+      "id": "t08",
+      "pronunciation": "tối",
+      "category": "time",
+      "level": "beginner",
+      "word": "tối",
+      "translation": "晚上"
+    },
+    {
+      "id": "t09",
+      "pronunciation": "tuần",
+      "category": "time",
+      "level": "elementary",
+      "word": "tuần",
+      "translation": "周/星期"
+    },
+    {
+      "id": "t10",
+      "pronunciation": "tháng",
+      "category": "time",
+      "level": "elementary",
+      "word": "tháng",
+      "translation": "月"
+    },
+    {
+      "id": "t11",
+      "pronunciation": "năm",
+      "category": "time",
+      "level": "elementary",
+      "notes": "Same word as number 5 — context determines meaning",
+      "word": "năm",
+      "translation": "年"
+    },
+    {
+      "id": "t12",
+      "pronunciation": "giờ",
+      "category": "time",
+      "level": "beginner",
+      "word": "giờ",
+      "translation": "小时/点钟"
+    },
+    {
+      "id": "t13",
+      "pronunciation": "fút",
+      "category": "time",
+      "level": "elementary",
+      "word": "phút",
+      "translation": "分钟"
+    },
+    {
+      "id": "t14",
+      "pronunciation": "sớm",
+      "category": "time",
+      "level": "elementary",
+      "word": "sớm",
+      "translation": "早"
+    },
+    {
+      "id": "t15",
+      "pronunciation": "muộn",
+      "category": "time",
+      "level": "elementary",
+      "word": "muộn",
+      "translation": "晚/迟"
+    },
+    {
+      "id": "co01",
+      "pronunciation": "đỏ",
+      "category": "colors",
+      "level": "beginner",
+      "notes": "Lucky color in Vietnamese culture",
+      "word": "đỏ",
+      "translation": "红色"
+    },
+    {
+      "id": "co02",
+      "pronunciation": "vàng",
+      "category": "colors",
+      "level": "beginner",
+      "notes": "Also means 'gold'",
+      "word": "vàng",
+      "translation": "黄色"
+    },
+    {
+      "id": "co03",
+      "pronunciation": "sanh lá",
+      "category": "colors",
+      "level": "beginner",
+      "word": "xanh lá",
+      "translation": "绿色"
+    },
+    {
+      "id": "co04",
+      "pronunciation": "sanh zương",
+      "category": "colors",
+      "level": "beginner",
+      "notes": "Vietnamese uses 'xanh' for both blue and green — context or qualifier distinguishes",
+      "word": "xanh dương",
+      "translation": "蓝色"
+    },
+    {
+      "id": "co05",
+      "pronunciation": "trắng",
+      "category": "colors",
+      "level": "beginner",
+      "word": "trắng",
+      "translation": "白色"
+    },
+    {
+      "id": "co06",
+      "pronunciation": "đen",
+      "category": "colors",
+      "level": "beginner",
+      "word": "đen",
+      "translation": "黑色"
+    },
+    {
+      "id": "co07",
+      "pronunciation": "hồng",
+      "category": "colors",
+      "level": "elementary",
+      "word": "hồng",
+      "translation": "粉红色"
+    },
+    {
+      "id": "co08",
+      "pronunciation": "nâu",
+      "category": "colors",
+      "level": "elementary",
+      "word": "nâu",
+      "translation": "棕色/褐色"
+    },
+    {
+      "id": "co09",
+      "pronunciation": "tím",
+      "category": "colors",
+      "level": "elementary",
+      "word": "tím",
+      "translation": "紫色"
+    },
+    {
+      "id": "co10",
+      "pronunciation": "gam",
+      "category": "colors",
+      "level": "elementary",
+      "notes": "Also means 'orange' (the fruit)",
+      "word": "cam",
+      "translation": "橙色"
+    },
+    {
+      "id": "pl01",
+      "pronunciation": "nhà",
+      "category": "places",
+      "level": "beginner",
+      "word": "nhà",
+      "translation": "家/房子"
+    },
+    {
+      "id": "pl02",
+      "pronunciation": "nhà hàng",
+      "category": "places",
+      "level": "beginner",
+      "word": "nhà hàng",
+      "translation": "餐厅"
+    },
+    {
+      "id": "pl03",
+      "pronunciation": "quán gà feh",
+      "category": "places",
+      "level": "beginner",
+      "word": "quán cà phê",
+      "translation": "咖啡店"
+    },
+    {
+      "id": "pl04",
+      "pronunciation": "bệnh viện",
+      "category": "places",
+      "level": "beginner",
+      "word": "bệnh viện",
+      "translation": "医院"
+    },
+    {
+      "id": "pl05",
+      "pronunciation": "hiệu thuốc",
+      "category": "places",
+      "level": "elementary",
+      "word": "hiệu thuốc",
+      "translation": "药店"
+    },
+    {
+      "id": "pl06",
+      "pronunciation": "siêu thị",
+      "category": "places",
+      "level": "elementary",
+      "word": "siêu thị",
+      "translation": "超市"
+    },
+    {
+      "id": "pl07",
+      "pronunciation": "hồ",
+      "category": "places",
+      "level": "elementary",
+      "notes": "Hanoi is the city of lakes — Hoàn Kiếm, Tây, Trúc Bạch",
+      "word": "hồ",
+      "translation": "湖"
+    },
+    {
+      "id": "pl08",
+      "pronunciation": "gohng viên",
+      "category": "places",
+      "level": "elementary",
+      "word": "công viên",
+      "translation": "公园"
+    },
+    {
+      "id": "pl09",
+      "pronunciation": "ngân hàng",
+      "category": "places",
+      "level": "elementary",
+      "word": "ngân hàng",
+      "translation": "银行"
+    },
+    {
+      "id": "pl10",
+      "pronunciation": "sân bay",
+      "category": "places",
+      "level": "elementary",
+      "word": "sân bay",
+      "translation": "机场"
+    },
+    {
+      "id": "pl11",
+      "pronunciation": "trường học",
+      "category": "places",
+      "level": "elementary",
+      "word": "trường học",
+      "translation": "学校"
+    },
+    {
+      "id": "pl12",
+      "pronunciation": "gửa hàng",
+      "category": "places",
+      "level": "elementary",
+      "word": "cửa hàng",
+      "translation": "商店"
+    },
+    {
+      "id": "tr01",
+      "pronunciation": "se máy",
+      "category": "transport",
+      "level": "beginner",
+      "notes": "The lifeblood of Hanoi traffic",
+      "word": "xe máy",
+      "translation": "摩托车"
+    },
+    {
+      "id": "tr02",
+      "pronunciation": "se buýt",
+      "category": "transport",
+      "level": "elementary",
+      "word": "xe buýt",
+      "translation": "公共汽车"
+    },
+    {
+      "id": "tr03",
+      "pronunciation": "tắc-xi",
+      "category": "transport",
+      "level": "beginner",
+      "word": "taxi",
+      "translation": "出租车"
+    },
+    {
+      "id": "tr04",
+      "pronunciation": "đi bộ",
+      "category": "transport",
+      "level": "beginner",
+      "word": "đi bộ",
+      "translation": "走路/步行"
+    },
+    {
+      "id": "tr05",
+      "pronunciation": "se ohm",
+      "category": "transport",
+      "level": "beginner",
+      "notes": "Motorbike taxi — now mostly via Grab app",
+      "word": "xe ôm",
+      "translation": "摩的"
+    },
+    {
+      "id": "tr06",
+      "pronunciation": "se đạp",
+      "category": "transport",
+      "level": "elementary",
+      "word": "xe đạp",
+      "translation": "自行车"
+    },
+    {
+      "id": "tr07",
+      "pronunciation": "tàu",
+      "category": "transport",
+      "level": "elementary",
+      "word": "tàu",
+      "translation": "火车/船"
+    },
+    {
+      "id": "tr08",
+      "pronunciation": "máy bay",
+      "category": "transport",
+      "level": "elementary",
+      "word": "máy bay",
+      "translation": "飞机"
+    },
+    {
+      "id": "tr09",
+      "pronunciation": "vé",
+      "category": "transport",
+      "level": "elementary",
+      "word": "vé",
+      "translation": "票"
+    },
+    {
+      "id": "w01",
+      "pronunciation": "nóng",
+      "category": "weather",
+      "level": "beginner",
+      "word": "nóng",
+      "translation": "热"
+    },
+    {
+      "id": "w02",
+      "pronunciation": "lạnh",
+      "category": "weather",
+      "level": "beginner",
+      "word": "lạnh",
+      "translation": "冷"
+    },
+    {
+      "id": "w03",
+      "pronunciation": "mưa",
+      "category": "weather",
+      "level": "beginner",
+      "word": "mưa",
+      "translation": "下雨/雨"
+    },
+    {
+      "id": "w04",
+      "pronunciation": "nắng",
+      "category": "weather",
+      "level": "beginner",
+      "word": "nắng",
+      "translation": "晴天/太阳大"
+    },
+    {
+      "id": "w05",
+      "pronunciation": "ẩm",
+      "category": "weather",
+      "level": "elementary",
+      "notes": "Hanoi is famously humid",
+      "word": "ẩm",
+      "translation": "潮湿"
+    },
+    {
+      "id": "w06",
+      "pronunciation": "gió",
+      "category": "weather",
+      "level": "elementary",
+      "word": "gió",
+      "translation": "风"
+    },
+    {
+      "id": "w07",
+      "pronunciation": "mát",
+      "category": "weather",
+      "level": "elementary",
+      "word": "mát",
+      "translation": "凉爽"
+    },
+    {
+      "id": "w08",
+      "pronunciation": "sương mù",
+      "category": "weather",
+      "level": "intermediate",
+      "notes": "Common in Hanoi winter mornings",
+      "word": "sương mù",
+      "translation": "雾"
+    },
+    {
+      "id": "w09",
+      "pronunciation": "bão",
+      "category": "weather",
+      "level": "intermediate",
+      "word": "bão",
+      "translation": "台风/风暴"
+    },
+    {
+      "id": "w10",
+      "pronunciation": "trời",
+      "category": "weather",
+      "level": "beginner",
+      "notes": "Trời nóng quá = It's so hot (weather)",
+      "word": "trời",
+      "translation": "天/天气"
+    },
+    {
+      "id": "e01",
+      "pronunciation": "vui",
+      "category": "emotions",
+      "level": "beginner",
+      "word": "vui",
+      "translation": "开心/高兴"
+    },
+    {
+      "id": "e02",
+      "pronunciation": "buồn",
+      "category": "emotions",
+      "level": "beginner",
+      "word": "buồn",
+      "translation": "伤心/难过"
+    },
+    {
+      "id": "e03",
+      "pronunciation": "mệt",
+      "category": "emotions",
+      "level": "beginner",
+      "word": "mệt",
+      "translation": "累"
+    },
+    {
+      "id": "e04",
+      "pronunciation": "sợ",
+      "category": "emotions",
+      "level": "elementary",
+      "word": "sợ",
+      "translation": "怕/害怕"
+    },
+    {
+      "id": "e05",
+      "pronunciation": "yêu",
+      "category": "emotions",
+      "level": "beginner",
+      "word": "yêu",
+      "translation": "爱"
+    },
+    {
+      "id": "e06",
+      "pronunciation": "thích",
+      "category": "emotions",
+      "level": "beginner",
+      "word": "thích",
+      "translation": "喜欢"
+    },
+    {
+      "id": "e07",
+      "pronunciation": "ghét",
+      "category": "emotions",
+      "level": "elementary",
+      "word": "ghét",
+      "translation": "讨厌"
+    },
+    {
+      "id": "e08",
+      "pronunciation": "nhớ",
+      "category": "emotions",
+      "level": "elementary",
+      "notes": "Means both 'miss' and 'remember'",
+      "word": "nhớ",
+      "translation": "想念/记得"
+    },
+    {
+      "id": "e09",
+      "pronunciation": "lo lắng",
+      "category": "emotions",
+      "level": "intermediate",
+      "word": "lo lắng",
+      "translation": "担心"
+    },
+    {
+      "id": "e10",
+      "pronunciation": "tức giận",
+      "category": "emotions",
+      "level": "intermediate",
+      "word": "tức giận",
+      "translation": "生气"
+    },
+    {
+      "id": "e11",
+      "pronunciation": "ján",
+      "category": "emotions",
+      "level": "elementary",
+      "word": "chán",
+      "translation": "无聊/烦"
+    },
+    {
+      "id": "e12",
+      "pronunciation": "hạnh fúc",
+      "category": "emotions",
+      "level": "intermediate",
+      "word": "hạnh phúc",
+      "translation": "幸福"
+    },
+    {
+      "id": "v01",
+      "pronunciation": "ăn",
+      "category": "verbs",
+      "level": "beginner",
+      "word": "ăn",
+      "translation": "吃"
+    },
+    {
+      "id": "v02",
+      "pronunciation": "uống",
+      "category": "verbs",
+      "level": "beginner",
+      "word": "uống",
+      "translation": "喝"
+    },
+    {
+      "id": "v03",
+      "pronunciation": "đi",
+      "category": "verbs",
+      "level": "beginner",
+      "word": "đi",
+      "translation": "走/去"
+    },
+    {
+      "id": "v04",
+      "pronunciation": "đến",
+      "category": "verbs",
+      "level": "beginner",
+      "word": "đến",
+      "translation": "到/来"
+    },
+    {
+      "id": "v05",
+      "pronunciation": "nói",
+      "category": "verbs",
+      "level": "beginner",
+      "word": "nói",
+      "translation": "说/讲"
+    },
+    {
+      "id": "v06",
+      "pronunciation": "nghe",
+      "category": "verbs",
+      "level": "beginner",
+      "word": "nghe",
+      "translation": "听"
+    },
+    {
+      "id": "v07",
+      "pronunciation": "nhìn",
+      "category": "verbs",
+      "level": "beginner",
+      "word": "nhìn",
+      "translation": "看"
+    },
+    {
+      "id": "v08",
+      "pronunciation": "biết",
+      "category": "verbs",
+      "level": "beginner",
+      "word": "biết",
+      "translation": "知道"
+    },
+    {
+      "id": "v09",
+      "pronunciation": "hiểu",
+      "category": "verbs",
+      "level": "beginner",
+      "word": "hiểu",
+      "translation": "明白/理解"
+    },
+    {
+      "id": "v10",
+      "pronunciation": "muốn",
+      "category": "verbs",
+      "level": "beginner",
+      "word": "muốn",
+      "translation": "想要"
+    },
+    {
+      "id": "v11",
+      "pronunciation": "gần",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "cần",
+      "translation": "需要"
+    },
+    {
+      "id": "v12",
+      "pronunciation": "gó",
+      "category": "verbs",
+      "level": "beginner",
+      "word": "có",
+      "translation": "有"
+    },
+    {
+      "id": "v13",
+      "pronunciation": "làm",
+      "category": "verbs",
+      "level": "beginner",
+      "word": "làm",
+      "translation": "做/工作"
+    },
+    {
+      "id": "v14",
+      "pronunciation": "jo",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "cho",
+      "translation": "给"
+    },
+    {
+      "id": "v15",
+      "pronunciation": "lấy",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "lấy",
+      "translation": "拿/取"
+    },
+    {
+      "id": "v16",
+      "pronunciation": "jờ",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "chờ",
+      "translation": "等"
+    },
+    {
+      "id": "v17",
+      "pronunciation": "giúp",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "giúp",
+      "translation": "帮/帮助"
+    },
+    {
+      "id": "v18",
+      "pronunciation": "hỏi",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "hỏi",
+      "translation": "问"
+    },
+    {
+      "id": "v19",
+      "pronunciation": "trả lời",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "trả lời",
+      "translation": "回答"
+    },
+    {
+      "id": "v20",
+      "pronunciation": "học",
+      "category": "verbs",
+      "level": "beginner",
+      "word": "học",
+      "translation": "学/学习"
+    },
+    {
+      "id": "v21",
+      "pronunciation": "viết",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "viết",
+      "translation": "写"
+    },
+    {
+      "id": "v22",
+      "pronunciation": "đọc",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "đọc",
+      "translation": "读"
+    },
+    {
+      "id": "v23",
+      "pronunciation": "mở",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "mở",
+      "translation": "开/打开"
+    },
+    {
+      "id": "v24",
+      "pronunciation": "đóng",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "đóng",
+      "translation": "关/关闭"
+    },
+    {
+      "id": "v25",
+      "pronunciation": "gọi",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "gọi",
+      "translation": "叫/打电话"
+    },
+    {
+      "id": "v26",
+      "pronunciation": "ngĩ",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "nghĩ",
+      "translation": "想/思考"
+    },
+    {
+      "id": "v27",
+      "pronunciation": "jơi",
+      "category": "verbs",
+      "level": "beginner",
+      "word": "chơi",
+      "translation": "玩"
+    },
+    {
+      "id": "v28",
+      "pronunciation": "ngồi",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "ngồi",
+      "translation": "坐"
+    },
+    {
+      "id": "v29",
+      "pronunciation": "đứng",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "đứng",
+      "translation": "站"
+    },
+    {
+      "id": "v30",
+      "pronunciation": "jạy",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "chạy",
+      "translation": "跑"
+    },
+    {
+      "id": "v31",
+      "pronunciation": "bơi",
+      "category": "verbs",
+      "level": "intermediate",
+      "word": "bơi",
+      "translation": "游泳"
+    },
+    {
+      "id": "v32",
+      "pronunciation": "nấu",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "nấu",
+      "translation": "做饭/烹饪"
+    },
+    {
+      "id": "v33",
+      "pronunciation": "zửa",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "rửa",
+      "translation": "洗"
+    },
+    {
+      "id": "v34",
+      "pronunciation": "mang",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "mang",
+      "translation": "带/拿来"
+    },
+    {
+      "id": "v35",
+      "pronunciation": "tìm",
+      "category": "verbs",
+      "level": "elementary",
+      "word": "tìm",
+      "translation": "找/寻找"
+    },
+    {
+      "id": "a01",
+      "pronunciation": "đẹp",
+      "category": "adjectives",
+      "level": "beginner",
+      "word": "đẹp",
+      "translation": "美/漂亮"
+    },
+    {
+      "id": "a02",
+      "pronunciation": "tốt",
+      "category": "adjectives",
+      "level": "beginner",
+      "word": "tốt",
+      "translation": "好"
+    },
+    {
+      "id": "a03",
+      "pronunciation": "sấu",
+      "category": "adjectives",
+      "level": "elementary",
+      "word": "xấu",
+      "translation": "丑/坏"
+    },
+    {
+      "id": "a04",
+      "pronunciation": "lớn",
+      "category": "adjectives",
+      "level": "beginner",
+      "word": "lớn",
+      "translation": "大"
+    },
+    {
+      "id": "a05",
+      "pronunciation": "nhỏ",
+      "category": "adjectives",
+      "level": "beginner",
+      "word": "nhỏ",
+      "translation": "小"
+    },
+    {
+      "id": "a06",
+      "pronunciation": "nhanh",
+      "category": "adjectives",
+      "level": "beginner",
+      "word": "nhanh",
+      "translation": "快"
+    },
+    {
+      "id": "a07",
+      "pronunciation": "jậm",
+      "category": "adjectives",
+      "level": "elementary",
+      "word": "chậm",
+      "translation": "慢"
+    },
+    {
+      "id": "a08",
+      "pronunciation": "mới",
+      "category": "adjectives",
+      "level": "beginner",
+      "word": "mới",
+      "translation": "新"
+    },
+    {
+      "id": "a09",
+      "pronunciation": "gũ",
+      "category": "adjectives",
+      "level": "elementary",
+      "word": "cũ",
+      "translation": "旧"
+    },
+    {
+      "id": "a10",
+      "pronunciation": "zễ",
+      "category": "adjectives",
+      "level": "elementary",
+      "word": "dễ",
+      "translation": "容易"
+    },
+    {
+      "id": "a11",
+      "pronunciation": "khó",
+      "category": "adjectives",
+      "level": "elementary",
+      "word": "khó",
+      "translation": "难"
+    },
+    {
+      "id": "a12",
+      "pronunciation": "nhiều",
+      "category": "adjectives",
+      "level": "beginner",
+      "word": "nhiều",
+      "translation": "多"
+    },
+    {
+      "id": "a13",
+      "pronunciation": "ít",
+      "category": "adjectives",
+      "level": "beginner",
+      "word": "ít",
+      "translation": "少"
+    },
+    {
+      "id": "a14",
+      "pronunciation": "sạch",
+      "category": "adjectives",
+      "level": "elementary",
+      "word": "sạch",
+      "translation": "干净"
+    },
+    {
+      "id": "a15",
+      "pronunciation": "bẩn",
+      "category": "adjectives",
+      "level": "elementary",
+      "word": "bẩn",
+      "translation": "脏"
+    },
+    {
+      "id": "a16",
+      "pronunciation": "gao",
+      "category": "adjectives",
+      "level": "elementary",
+      "word": "cao",
+      "translation": "高"
+    },
+    {
+      "id": "a17",
+      "pronunciation": "thấp",
+      "category": "adjectives",
+      "level": "elementary",
+      "word": "thấp",
+      "translation": "低/矮"
+    },
+    {
+      "id": "a18",
+      "pronunciation": "zài",
+      "category": "adjectives",
+      "level": "elementary",
+      "word": "dài",
+      "translation": "长"
+    },
+    {
+      "id": "a19",
+      "pronunciation": "ngắn",
+      "category": "adjectives",
+      "level": "elementary",
+      "word": "ngắn",
+      "translation": "短"
+    },
+    {
+      "id": "a20",
+      "pronunciation": "đúng",
+      "category": "adjectives",
+      "level": "elementary",
+      "word": "đúng",
+      "translation": "对/正确"
+    },
+    {
+      "id": "a21",
+      "pronunciation": "sai",
+      "category": "adjectives",
+      "level": "elementary",
+      "word": "sai",
+      "translation": "错"
+    },
+    {
+      "id": "ph01",
+      "pronunciation": "toy khohng hiểu",
+      "category": "phrases",
+      "level": "beginner",
+      "word": "Tôi không hiểu",
+      "translation": "我不明白"
+    },
+    {
+      "id": "ph02",
+      "pronunciation": "nói jậm hern",
+      "category": "phrases",
+      "level": "beginner",
+      "word": "Nói chậm hơn",
+      "translation": "说慢一点"
+    },
+    {
+      "id": "ph03",
+      "pronunciation": "gái này là gì",
+      "category": "phrases",
+      "level": "beginner",
+      "word": "Cái này là gì?",
+      "translation": "这是什么？"
+    },
+    {
+      "id": "ph04",
+      "pronunciation": "toy muốn",
+      "category": "phrases",
+      "level": "beginner",
+      "word": "Tôi muốn...",
+      "translation": "我想要……"
+    },
+    {
+      "id": "ph05",
+      "pronunciation": "jo toy sem",
+      "category": "phrases",
+      "level": "beginner",
+      "word": "Cho tôi xem",
+      "translation": "给我看看"
+    },
+    {
+      "id": "ph06",
+      "pronunciation": "được khohng",
+      "category": "phrases",
+      "level": "beginner",
+      "word": "Được không?",
+      "translation": "可以吗？"
+    },
+    {
+      "id": "ph07",
+      "pronunciation": "toy là người nước ngoài",
+      "category": "phrases",
+      "level": "elementary",
+      "word": "Tôi là người nước ngoài",
+      "translation": "我是外国人"
+    },
+    {
+      "id": "ph08",
+      "pronunciation": "tính tiền",
+      "category": "phrases",
+      "level": "beginner",
+      "notes": "Essential for restaurants",
+      "word": "Tính tiền",
+      "translation": "买单/结账"
+    },
+    {
+      "id": "ph09",
+      "pronunciation": "khohng gần túi",
+      "category": "phrases",
+      "level": "elementary",
+      "word": "Không cần túi",
+      "translation": "不要袋子"
+    },
+    {
+      "id": "ph10",
+      "pronunciation": "ở đây hay mang đi",
+      "category": "phrases",
+      "level": "elementary",
+      "notes": "You'll hear this at every food stall",
+      "word": "Ở đây hay mang đi?",
+      "translation": "在这里吃还是带走？"
+    },
+    {
+      "id": "ph11",
+      "pronunciation": "toy bị lạc",
+      "category": "phrases",
+      "level": "elementary",
+      "word": "Tôi bị lạc",
+      "translation": "我迷路了"
+    },
+    {
+      "id": "ph12",
+      "pronunciation": "bạn nói tiếng anh khohng",
+      "category": "phrases",
+      "level": "beginner",
+      "word": "Bạn nói tiếng Anh không?",
+      "translation": "你会说英语吗？"
+    },
+    {
+      "id": "ph13",
+      "pronunciation": "khohng gay",
+      "category": "phrases",
+      "level": "beginner",
+      "word": "Không cay",
+      "translation": "不要辣"
+    },
+    {
+      "id": "ph14",
+      "pronunciation": "ngon quá",
+      "category": "phrases",
+      "level": "beginner",
+      "word": "Ngon quá!",
+      "translation": "太好吃了！"
+    },
+    {
+      "id": "h01",
+      "pronunciation": "fố gổ",
+      "category": "hanoi",
+      "level": "elementary",
+      "notes": "Hanoi Old Quarter — 36 streets",
+      "word": "phố cổ",
+      "translation": "老城区/古街"
+    },
+    {
+      "id": "h02",
+      "pronunciation": "hồ gươm",
+      "category": "hanoi",
+      "level": "elementary",
+      "notes": "Hoàn Kiếm Lake, heart of Hanoi — named after a legend of a returned magic sword",
+      "word": "Hồ Gươm",
+      "translation": "还剑湖"
+    },
+    {
+      "id": "h03",
+      "pronunciation": "oh nhiễm",
+      "category": "hanoi",
+      "level": "intermediate",
+      "notes": "Useful with AQI discussions",
+      "word": "ô nhiễm",
+      "translation": "污染"
+    },
+    {
+      "id": "h04",
+      "pronunciation": "kẹt se",
+      "category": "hanoi",
+      "level": "elementary",
+      "notes": "Daily reality in Hanoi",
+      "word": "kẹt xe",
+      "translation": "堵车"
+    },
+    {
+      "id": "h05",
+      "pronunciation": "trà đá",
+      "category": "hanoi",
+      "level": "beginner",
+      "notes": "The 2000đ sidewalk iced tea — social institution in Hanoi",
+      "word": "trà đá",
+      "translation": "冰茶"
+    },
+    {
+      "id": "h06",
+      "pronunciation": "jùa",
+      "category": "hanoi",
+      "level": "elementary",
+      "notes": "Hanoi has hundreds of temples and pagodas",
+      "word": "chùa",
+      "translation": "寺庙/塔"
+    },
+    {
+      "id": "h07",
+      "pronunciation": "fở bò",
+      "category": "hanoi",
+      "level": "beginner",
+      "word": "phở bò",
+      "translation": "牛肉河粉"
+    },
+    {
+      "id": "h08",
+      "pronunciation": "sích loh",
+      "category": "hanoi",
+      "level": "intermediate",
+      "notes": "Cyclo — now mostly tourist transport in the Old Quarter",
+      "word": "xích lô",
+      "translation": "三轮车"
+    },
+    {
+      "id": "b01",
+      "pronunciation": "đầu",
+      "category": "body",
+      "level": "elementary",
+      "word": "đầu",
+      "translation": "头"
+    },
+    {
+      "id": "b02",
+      "pronunciation": "mắt",
+      "category": "body",
+      "level": "elementary",
+      "word": "mắt",
+      "translation": "眼睛"
+    },
+    {
+      "id": "b03",
+      "pronunciation": "tay",
+      "category": "body",
+      "level": "elementary",
+      "word": "tay",
+      "translation": "手"
+    },
+    {
+      "id": "b04",
+      "pronunciation": "jân",
+      "category": "body",
+      "level": "elementary",
+      "word": "chân",
+      "translation": "脚/腿"
+    },
+    {
+      "id": "b05",
+      "pronunciation": "bụng",
+      "category": "body",
+      "level": "elementary",
+      "word": "bụng",
+      "translation": "肚子"
+    },
+    {
+      "id": "b06",
+      "pronunciation": "đau",
+      "category": "body",
+      "level": "beginner",
+      "notes": "đau đầu = headache, đau bụng = stomachache",
+      "word": "đau",
+      "translation": "痛/疼"
+    },
+    {
+      "id": "b07",
+      "pronunciation": "mũi",
+      "category": "body",
+      "level": "elementary",
+      "word": "mũi",
+      "translation": "鼻子"
+    },
+    {
+      "id": "b08",
+      "pronunciation": "miệng",
+      "category": "body",
+      "level": "elementary",
+      "word": "miệng",
+      "translation": "嘴巴"
+    },
+    {
+      "id": "b09",
+      "pronunciation": "tai",
+      "category": "body",
+      "level": "elementary",
+      "word": "tai",
+      "translation": "耳朵"
+    },
+    {
+      "id": "b10",
+      "pronunciation": "lưng",
+      "category": "body",
+      "level": "intermediate",
+      "word": "lưng",
+      "translation": "背/腰"
+    },
+    {
+      "id": "b11",
+      "pronunciation": "răng",
+      "category": "body",
+      "level": "intermediate",
+      "word": "răng",
+      "translation": "牙齿"
+    },
+    {
+      "id": "he01",
+      "pronunciation": "bị ốm",
+      "category": "health",
+      "level": "beginner",
+      "notes": "Northern; 'bị bệnh' is also common",
+      "word": "bị ốm",
+      "translation": "生病"
+    },
+    {
+      "id": "he02",
+      "pronunciation": "thuốc",
+      "category": "health",
+      "level": "beginner",
+      "word": "thuốc",
+      "translation": "药"
+    },
+    {
+      "id": "he03",
+      "pronunciation": "bác sĩ",
+      "category": "health",
+      "level": "beginner",
+      "word": "bác sĩ",
+      "translation": "医生"
+    },
+    {
+      "id": "he04",
+      "pronunciation": "sốt",
+      "category": "health",
+      "level": "elementary",
+      "word": "sốt",
+      "translation": "发烧"
+    },
+    {
+      "id": "he05",
+      "pronunciation": "ho",
+      "category": "health",
+      "level": "elementary",
+      "word": "ho",
+      "translation": "咳嗽"
+    },
+    {
+      "id": "he06",
+      "pronunciation": "zị ứng",
+      "category": "health",
+      "level": "intermediate",
+      "word": "dị ứng",
+      "translation": "过敏"
+    },
+    {
+      "id": "he07",
+      "pronunciation": "khỏe",
+      "category": "health",
+      "level": "beginner",
+      "word": "khỏe",
+      "translation": "健康/好"
+    },
+    {
+      "id": "c01",
+      "pronunciation": "gia đình",
+      "category": "family",
+      "level": "elementary",
+      "word": "gia đình",
+      "translation": "家庭/家人"
+    },
+    {
+      "id": "c02",
+      "pronunciation": "bố",
+      "category": "family",
+      "level": "beginner",
+      "notes": "Northern; 'ba' in the south",
+      "word": "bố",
+      "translation": "爸爸"
+    },
+    {
+      "id": "c03",
+      "pronunciation": "mẹ",
+      "category": "family",
+      "level": "beginner",
+      "notes": "Northern; 'má' in the south",
+      "word": "mẹ",
+      "translation": "妈妈"
+    },
+    {
+      "id": "c04",
+      "pronunciation": "gon",
+      "category": "family",
+      "level": "elementary",
+      "notes": "Also a classifier for animals",
+      "word": "con",
+      "translation": "孩子/子女"
+    },
+    {
+      "id": "c05",
+      "pronunciation": "vợ",
+      "category": "family",
+      "level": "elementary",
+      "word": "vợ",
+      "translation": "妻子/老婆"
+    },
+    {
+      "id": "c06",
+      "pronunciation": "jồng",
+      "category": "family",
+      "level": "elementary",
+      "word": "chồng",
+      "translation": "丈夫/老公"
+    },
+    {
+      "id": "c07",
+      "pronunciation": "bạn trai",
+      "category": "family",
+      "level": "elementary",
+      "word": "bạn trai",
+      "translation": "男朋友"
+    },
+    {
+      "id": "c08",
+      "pronunciation": "bạn gái",
+      "category": "family",
+      "level": "elementary",
+      "word": "bạn gái",
+      "translation": "女朋友"
+    },
+    {
+      "id": "c09",
+      "pronunciation": "anh trai",
+      "category": "family",
+      "level": "elementary",
+      "word": "anh trai",
+      "translation": "哥哥"
+    },
+    {
+      "id": "c10",
+      "pronunciation": "jị gái",
+      "category": "family",
+      "level": "elementary",
+      "word": "chị gái",
+      "translation": "姐姐"
+    },
+    {
+      "id": "c11",
+      "pronunciation": "em trai",
+      "category": "family",
+      "level": "elementary",
+      "word": "em trai",
+      "translation": "弟弟"
+    },
+    {
+      "id": "c12",
+      "pronunciation": "em gái",
+      "category": "family",
+      "level": "elementary",
+      "word": "em gái",
+      "translation": "妹妹"
+    },
+    {
+      "id": "u01",
+      "pronunciation": "điện thoại",
+      "category": "daily",
+      "level": "elementary",
+      "word": "điện thoại",
+      "translation": "手机/电话"
+    },
+    {
+      "id": "u02",
+      "pronunciation": "why-fai",
+      "category": "daily",
+      "level": "beginner",
+      "notes": "Mật khẩu wifi = wifi password",
+      "word": "wifi",
+      "translation": "无线网"
+    },
+    {
+      "id": "u03",
+      "pronunciation": "nhà vệ sinh",
+      "category": "daily",
+      "level": "beginner",
+      "word": "nhà vệ sinh",
+      "translation": "卫生间/厕所"
+    },
+    {
+      "id": "u04",
+      "pronunciation": "jìa khóa",
+      "category": "daily",
+      "level": "elementary",
+      "word": "chìa khóa",
+      "translation": "钥匙"
+    },
+    {
+      "id": "u05",
+      "pronunciation": "oh",
+      "category": "daily",
+      "level": "elementary",
+      "word": "ô",
+      "translation": "伞"
+    },
+    {
+      "id": "u06",
+      "pronunciation": "ngủ",
+      "category": "daily",
+      "level": "beginner",
+      "word": "ngủ",
+      "translation": "睡觉"
+    },
+    {
+      "id": "u07",
+      "pronunciation": "zậy",
+      "category": "daily",
+      "level": "elementary",
+      "word": "dậy",
+      "translation": "起床/起来"
+    },
+    {
+      "id": "u08",
+      "pronunciation": "tắm",
+      "category": "daily",
+      "level": "elementary",
+      "word": "tắm",
+      "translation": "洗澡"
+    },
+    {
+      "id": "u09",
+      "pronunciation": "quần áo",
+      "category": "daily",
+      "level": "elementary",
+      "word": "quần áo",
+      "translation": "衣服"
+    },
+    {
+      "id": "u10",
+      "pronunciation": "giày",
+      "category": "daily",
+      "level": "elementary",
+      "word": "giày",
+      "translation": "鞋子"
+    },
+    {
+      "id": "u11",
+      "pronunciation": "túi",
+      "category": "daily",
+      "level": "elementary",
+      "word": "túi",
+      "translation": "包/袋子"
+    },
+    {
+      "id": "u12",
+      "pronunciation": "kính",
+      "category": "daily",
+      "level": "intermediate",
+      "word": "kính",
+      "translation": "眼镜"
+    },
+    {
+      "id": "u13",
+      "pronunciation": "máy tính",
+      "category": "daily",
+      "level": "elementary",
+      "word": "máy tính",
+      "translation": "电脑"
+    },
+    {
+      "id": "an01",
+      "pronunciation": "gon jó",
+      "category": "animals",
+      "level": "beginner",
+      "word": "con chó",
+      "translation": "狗"
+    },
+    {
+      "id": "an02",
+      "pronunciation": "gon mèo",
+      "category": "animals",
+      "level": "beginner",
+      "word": "con mèo",
+      "translation": "猫"
+    },
+    {
+      "id": "an03",
+      "pronunciation": "gon gà",
+      "category": "animals",
+      "level": "elementary",
+      "word": "con gà",
+      "translation": "鸡（活的）"
+    },
+    {
+      "id": "an04",
+      "pronunciation": "gon trâu",
+      "category": "animals",
+      "level": "intermediate",
+      "notes": "Symbol of Vietnamese agriculture and patience",
+      "word": "con trâu",
+      "translation": "水牛"
+    },
+    {
+      "id": "an05",
+      "pronunciation": "gon zồng",
+      "category": "animals",
+      "level": "intermediate",
+      "notes": "Hanoi's old name Thăng Long means 'ascending dragon'",
+      "word": "con rồng",
+      "translation": "龙"
+    },
+    {
+      "id": "an06",
+      "pronunciation": "gon gá",
+      "category": "animals",
+      "level": "elementary",
+      "notes": "'con' is the classifier for animals",
+      "word": "con cá",
+      "translation": "鱼（活的）"
+    },
+    {
+      "id": "an07",
+      "pronunciation": "gon jim",
+      "category": "animals",
+      "level": "elementary",
+      "word": "con chim",
+      "translation": "鸟"
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+# Quickstart (data lives in $FAFF_HOME, default ~/.faffmonkey; faff init
+# creates state/.env there and faff setup provider populates it):
+#   mkdir -p ~/.faffmonkey/workspace ~/.faffmonkey/state ~/.faffmonkey/extensions
+#   docker compose build
+#   docker compose run --rm faffmonkey faff init
+#   docker compose run --rm faffmonkey faff setup provider
+#   ./bin/faff setup telegram  # optional; extension setup runs on the host
+#   docker compose build       # rebuild after adding an extension
+#   docker compose up -d
+#   docker compose exec faffmonkey faff doctor
+
+services:
+  faffmonkey:
+    build: .
+    # Files written to the bind mounts are owned by this uid/gid on the
+    # host. Set FAFF_UID/FAFF_GID (in the shell or a .env next to this
+    # file) if your user is not 1000:1000.
+    user: "${FAFF_UID:-1000}:${FAFF_GID:-1000}"
+    # The host side of every mount is the data root: $FAFF_HOME, default
+    # ~/.faffmonkey. Override it in the shell or in a .env file next to
+    # this file. Data never lives in the checkout: a deploy that replaces
+    # the checkout must not be able to touch it.
+    volumes:
+      - ${FAFF_HOME:-~/.faffmonkey}/workspace:/app/workspace:rw
+      - ${FAFF_HOME:-~/.faffmonkey}/state:/app/state:rw
+      - ${FAFF_HOME:-~/.faffmonkey}/extensions:/app/extensions:ro
+      # backups mounted rw so in-container faff backup / faff update can
+      # write snapshots; the data-root migration itself is host-only.
+      - ${FAFF_HOME:-~/.faffmonkey}/backups:/app/backups:rw
+    env_file:
+      - path: ${FAFF_HOME:-~/.faffmonkey}/state/.env
+        required: false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

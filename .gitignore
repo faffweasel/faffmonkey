@@ -1,0 +1,26 @@
+# Data lives in $FAFF_HOME; these ignores are a safety net for installs
+# from before the data root existed and for stray local runs, so personal
+# data in the old in-checkout layout can never be committed.
+state/*
+backups/
+workspace/*
+docker-compose.override.yml
+extensions/*
+requirements.extra.txt
+.DS_Store
+CLAUDE.local.md
+.claude/
+reference/
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+*.log
+.env
+.env.*
+.venv/
+.mutations.lock

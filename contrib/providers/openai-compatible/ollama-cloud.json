@@ -1,0 +1,9 @@
+{
+  "name": "Ollama Cloud",
+  "provider_key": "ollama-cloud",
+  "base_url": "https://ollama.com/v1",
+  "api_key_env": "OLLAMA_API_KEY",
+  "default_model": "kimi-k3:cloud",
+  "notes": "Get your API key at ollama.com/settings/keys",
+  "cheap_model": "kimi-k2.6:cloud"
+}
