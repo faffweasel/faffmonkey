@@ -11,6 +11,9 @@ import pytest
 
 from faffmonkey.config import CompactionConfig, Config, HeartbeatConfig, ModelConfig
 from faffmonkey.runtime.compaction import (
+    FLUSH_FAILED,
+    FLUSH_NOTHING,
+    FLUSH_SAVED,
     MAX_FLUSH_CONTENT_BYTES,
     MAX_PRESERVED_BLOB_BYTES,
     _PRESERVED_MARKER,
@@ -295,12 +298,11 @@ class TestMemoryFlush:
         session = store.get_or_create_main_session("test")
         config = _make_config()
 
-        # True means "there was nothing to save", not "it failed". compact()
+        # An empty history is nothing to save, not a failure. compact()
         # branches on this to decide whether to preserve the pre-compaction
-        # head as a blob, and /new picks its message from it. Flipping the
-        # empty-history return to False survived this test unnoticed.
+        # head as a blob, and /new picks its message from it.
         result = memory_flush(store, session.id, workspace, lambda mc: MagicMock(), config)
-        assert result is True
+        assert result == FLUSH_NOTHING
 
     def test_falls_back_to_cheap_model(self, tmp_path):
         state_dir = tmp_path / "state"
@@ -339,10 +341,10 @@ class TestMemoryFlush:
         config = _make_config()
 
         result = memory_flush(store, session.id, workspace, lambda mc: failing, config)
-        # False is what makes compact() preserve the head rather than discard
-        # it. A partial file written before the provider failed would also be
-        # a defect, and neither was checked.
-        assert result is False
+        # FLUSH_FAILED is what makes compact() preserve the head rather than
+        # discard it. A partial file written before the provider failed would
+        # also be a defect, and neither was checked.
+        assert result == FLUSH_FAILED
         assert list(workspace.iterdir()) == []
 
     def test_rejects_traversal_path(self, tmp_path):
@@ -363,6 +365,91 @@ class TestMemoryFlush:
         config = _make_config()
         memory_flush(store, session.id, workspace, lambda mc: provider, config)
         assert not (tmp_path / "escape.txt").exists()
+
+    def _store_with_history(self, tmp_path):
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        store = SessionStore(state_dir / "sessions.db")
+        session = store.get_or_create_main_session("test")
+        store.append_message(session.id, "user", "ping?")
+        store.append_message(session.id, "assistant", "pong")
+        return store, session, workspace
+
+    def test_nothing_to_save_marker_is_not_a_failure(self, tmp_path):
+        store, session, workspace = self._store_with_history(tmp_path)
+        provider = FauxProvider([faux_response(text="NOTHING_TO_SAVE")])
+
+        result = memory_flush(store, session.id, workspace, lambda mc: provider, _make_config())
+
+        assert result == FLUSH_NOTHING
+        assert list(workspace.iterdir()) == []
+
+    def test_wrong_tool_is_corrected_once_by_name(self, tmp_path):
+        # The model picks tools it saw in the history rather than the one
+        # offered; the correction must name what it did so it can stop.
+        store, session, workspace = self._store_with_history(tmp_path)
+        provider = FauxProvider([
+            faux_response(tool_calls=[{"name": "file_read", "arguments": {"path": "MEMORY.md"}}]),
+            faux_response(tool_calls=[{
+                "name": "file_write",
+                "arguments": {"path": "MEMORY.md", "content": "user says ping"},
+            }]),
+        ])
+
+        result = memory_flush(store, session.id, workspace, lambda mc: provider, _make_config())
+
+        assert result == FLUSH_SAVED
+        assert "ping" in (workspace / "MEMORY.md").read_text()
+        nudge = provider.calls[1].messages[-1]
+        assert nudge.role == "user"
+        assert "file_read" in nudge.content
+        assert "file_write" in nudge.content
+        assert provider.calls[1].tools == provider.calls[0].tools
+
+    def test_prose_then_marker_is_nothing_to_save(self, tmp_path):
+        store, session, workspace = self._store_with_history(tmp_path)
+        provider = FauxProvider([
+            faux_response(text="There is nothing here worth keeping."),
+            faux_response(text="NOTHING_TO_SAVE"),
+        ])
+
+        result = memory_flush(store, session.id, workspace, lambda mc: provider, _make_config())
+
+        assert result == FLUSH_NOTHING
+        provider.assert_exhausted()
+
+    def test_second_model_gets_a_turn_after_the_first_answers_wrongly_twice(self, tmp_path):
+        store, session, workspace = self._store_with_history(tmp_path)
+        providers = {
+            "faux-main": FauxProvider([
+                faux_response(tool_calls=[{"name": "file_edit", "arguments": {}}]),
+                faux_response(tool_calls=[{"name": "file_edit", "arguments": {}}]),
+            ]),
+            "faux-cheap": FauxProvider([_flush_ok_response()]),
+        }
+        config = _make_config(routing={"conversation": "main", "compaction": "cheap"})
+
+        result = memory_flush(
+            store, session.id, workspace, lambda mc: providers[mc.model], config,
+        )
+
+        assert result == FLUSH_SAVED
+        for provider in providers.values():
+            provider.assert_exhausted()
+
+    def test_same_model_is_not_asked_a_third_time(self, tmp_path):
+        store, session, workspace = self._store_with_history(tmp_path)
+        provider = FauxProvider([
+            faux_response(text="noted"),
+            faux_response(text="noted again"),
+        ])
+
+        result = memory_flush(store, session.id, workspace, lambda mc: provider, _make_config())
+
+        assert result == FLUSH_FAILED
+        assert len(provider.calls) == 2
 
 
 class TestThreeTierFallback:
@@ -713,7 +800,7 @@ class TestConcurrentInsertDuringFlush:
 
         def flush_that_inserts(*args, **kwargs):
             store.append_message(session.id, "user", "concurrent message")
-            return True
+            return FLUSH_SAVED
 
         provider = FauxProvider([faux_response(text="## Goal\nsummary")])
 
@@ -746,7 +833,7 @@ class TestFlushFailurePreservesHead:
         config = _make_config(compaction=CompactionConfig(protect_last_n=5))
 
         def flush_fails(*args, **kwargs):
-            return False
+            return FLUSH_FAILED
 
         provider = FauxProvider([faux_response(text="## Goal\nsummary")])
 
@@ -883,7 +970,7 @@ class TestEmptyHeadSkipsBeforeCheckpoint:
 
 
 class TestMemoryFlushEmptyToolCalls:
-    def test_returns_false_when_no_tool_calls(self, tmp_path):
+    def test_prose_twice_is_a_failure(self, tmp_path):
         state_dir = tmp_path / "state"
         state_dir.mkdir()
         workspace = tmp_path / "workspace"
@@ -892,11 +979,15 @@ class TestMemoryFlushEmptyToolCalls:
         session = store.get_or_create_main_session("test")
         store.append_message(session.id, "user", "remember this")
 
-        provider = FauxProvider([faux_response(text="sure, noted")])
+        provider = FauxProvider([
+            faux_response(text="sure, noted"),
+            faux_response(text="I have noted it."),
+        ])
         config = _make_config()
 
         result = memory_flush(store, session.id, workspace, lambda mc: provider, config)
-        assert result is False
+        assert result == FLUSH_FAILED
+        provider.assert_exhausted()
 
     def test_returns_true_with_tool_calls(self, tmp_path):
         state_dir = tmp_path / "state"
@@ -911,7 +1002,7 @@ class TestMemoryFlushEmptyToolCalls:
         config = _make_config()
 
         result = memory_flush(store, session.id, workspace, lambda mc: provider, config)
-        assert result is True
+        assert result == FLUSH_SAVED
 
 
 class TestFlushWriteCounts:
@@ -933,7 +1024,7 @@ class TestFlushWriteCounts:
         with patch("pathlib.Path.write_text", side_effect=OSError("disk full")):
             result = memory_flush(store, session.id, workspace, lambda mc: provider, config)
 
-        assert result is False
+        assert result == FLUSH_FAILED
 
     def test_zero_file_write_in_tool_calls(self, tmp_path):
         state_dir = tmp_path / "state"
@@ -944,13 +1035,17 @@ class TestFlushWriteCounts:
         session = store.get_or_create_main_session("test")
         store.append_message(session.id, "user", "remember this")
 
-        provider = FauxProvider([faux_response(tool_calls=[
-            {"name": "web_search", "arguments": {"query": "something"}},
-        ])])
+        provider = FauxProvider([
+            faux_response(tool_calls=[
+                {"name": "web_search", "arguments": {"query": "something"}},
+            ]),
+            faux_response(text="searching now"),
+        ])
         config = _make_config()
 
         result = memory_flush(store, session.id, workspace, lambda mc: provider, config)
-        assert result is False
+        assert result == FLUSH_FAILED
+        provider.assert_exhausted()
 
     def test_mix_of_success_and_failure(self, tmp_path):
         state_dir = tmp_path / "state"
@@ -968,7 +1063,7 @@ class TestFlushWriteCounts:
         config = _make_config()
 
         result = memory_flush(store, session.id, workspace, lambda mc: provider, config)
-        assert result is False
+        assert result == FLUSH_FAILED
         assert (workspace / "good.md").read_text() == "ok"
         assert not (tmp_path / "escape.txt").exists()
 
@@ -987,7 +1082,7 @@ class TestFlushWriteCounts:
         config = _make_config()
 
         result = memory_flush(store, session.id, workspace, lambda mc: provider, config)
-        assert result is True
+        assert result == FLUSH_SAVED
         assert (workspace / "MEMORY.md").read_text() == "noted"
 
     def test_execute_flush_writes_returns_counts(self, tmp_path):
@@ -1051,7 +1146,7 @@ class TestPreservedBlobBounds:
         store, session, config, workspace, state_dir = self._setup(tmp_path, 200)
 
         def flush_fails(*args, **kwargs):
-            return False
+            return FLUSH_FAILED
 
         provider = FauxProvider([faux_response(text="## Goal\nsummary")])
 
@@ -1087,7 +1182,7 @@ class TestPreservedBlobBounds:
         config = _make_config(compaction=CompactionConfig(protect_last_n=5))
 
         def flush_fails(*args, **kwargs):
-            return False
+            return FLUSH_FAILED
 
         provider = FauxProvider([faux_response(text="## Goal\nnew summary")])
 
@@ -1501,7 +1596,7 @@ class TestFlushRefusesOverwrite:
         config = _make_config()
 
         result = memory_flush(store, session.id, workspace, lambda mc: provider, config)
-        assert result is False
+        assert result == FLUSH_FAILED
         assert (workspace / "notes.md").read_text() == "existing"
 
 
@@ -1661,7 +1756,7 @@ class TestTruncatedCheckpointProtection:
         config = _make_config(compaction=CompactionConfig(protect_last_n=5))
 
         def flush_fails(*args, **kwargs):
-            return False
+            return FLUSH_FAILED
 
         provider = FauxProvider([faux_response(text="## Goal\nsummary")])
 
@@ -1694,7 +1789,7 @@ class TestTruncatedCheckpointProtection:
         config = _make_config(compaction=CompactionConfig(protect_last_n=5))
 
         def flush_fails(*args, **kwargs):
-            return False
+            return FLUSH_FAILED
 
         provider = FauxProvider([faux_response(text="## Goal\nsummary")])
 
@@ -1731,7 +1826,7 @@ class TestTruncatedCheckpointProtection:
         config = _make_config(compaction=CompactionConfig(protect_last_n=5))
 
         def flush_fails(*args, **kwargs):
-            return False
+            return FLUSH_FAILED
 
         provider = FauxProvider([faux_response(text="## Goal\nfirst summary")])
 

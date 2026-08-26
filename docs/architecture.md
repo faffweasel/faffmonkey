@@ -513,6 +513,16 @@ every heartbeat.
   and yesterday auto-load into context. Written by the loop's daily
   note (see Compaction) and the memory flush; the agent writes to them
   directly only when asked.
+- **Memory flush** (before compaction, on `/new`, on session rotation):
+  the history is sent with a single `file_write` tool, described as
+  append-only and as the only tool in the step, and the instruction to
+  reply `NOTHING_TO_SAVE` when there is nothing worth keeping. A reply
+  that is neither (prose, or a tool the history shows but the step does
+  not offer) is corrected once, naming what the model did; a model
+  that answers wrongly twice hands over to the `compaction` slot. The
+  outcome is saved, nothing or failed; only failed makes compaction
+  preserve the head as a blob or `/new` report that memory was not
+  saved.
 - **Person and project files** (`memory/person/`, `memory/project/`):
   created as needed, found via memory-search, not auto-loaded.
 - **sessions.db**: conversation history; disposable without losing

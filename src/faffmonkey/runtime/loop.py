@@ -23,6 +23,7 @@ from faffmonkey.config import (
     read_json_object,
     write_json_object,
 )
+from faffmonkey.runtime.compaction import FLUSH_FAILED, FLUSH_NOTHING, FLUSH_SAVED
 from faffmonkey.runtime.goal import (
     GoalState,
     check_goal_done,
@@ -392,7 +393,7 @@ def handle_slash_command(
     new_session: Callable[[], None] | None = None,
     workspace: Path | None = None,
     compact_fn: Callable[[], dict] | None = None,
-    memory_flush_fn: Callable[[], bool] | None = None,
+    memory_flush_fn: Callable[[], str] | None = None,
     status_fn: Callable[[], str] | None = None,
     state_dir: Path | None = None,
 ) -> str | None:
@@ -409,17 +410,19 @@ def handle_slash_command(
     if cmd == "/status":
         return _handle_status(status_fn)
     if cmd == "/new":
-        flush_ok = False
+        outcome = FLUSH_FAILED
         if memory_flush_fn is not None:
             try:
-                flush_ok = memory_flush_fn()
+                outcome = memory_flush_fn()
             except Exception:
                 logger.warning("memory flush failed during /new, proceeding anyway")
         clear_history()
         if new_session is not None:
             new_session()
-        if flush_ok:
+        if outcome == FLUSH_SAVED:
             return "Session saved and reset."
+        if outcome == FLUSH_NOTHING:
+            return "Session reset (nothing new to save)."
         return "Session reset (memory was not saved)."
     if cmd == "/clear":
         clear_history()
@@ -1031,9 +1034,9 @@ class AgentLoop:
             if tool_call_count > MAX_TOOL_CALLS_PER_TURN:
                 return response_text or "Tool call limit exceeded."
 
-    def _do_memory_flush(self) -> bool:
+    def _do_memory_flush(self) -> str:
         if not (self._store and self._session_id and self._workspace):
-            return False
+            return FLUSH_FAILED
         from faffmonkey.runtime.compaction import memory_flush
 
         return memory_flush(

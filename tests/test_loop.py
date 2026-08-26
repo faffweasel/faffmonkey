@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from faffmonkey.config import Config, CompactionConfig, ConfigError, HeartbeatConfig, ModelConfig
+from faffmonkey.runtime.compaction import FLUSH_FAILED, FLUSH_NOTHING, FLUSH_SAVED
 from faffmonkey.runtime.loop import (
     AgentLoop,
     EMPTY_RESPONSE_NUDGE,
@@ -92,7 +93,7 @@ class TestSlashCommands:
 
         def flush_fn():
             order.append("flush")
-            return True
+            return FLUSH_SAVED
 
         result = handle_slash_command(
             "/new", config,
@@ -118,14 +119,23 @@ class TestSlashCommands:
         assert result == "Session reset (memory was not saved)."
         assert len(cleared) == 1
 
-    def test_new_flush_returns_false(self):
+    def test_new_flush_failed(self):
         config = _make_config()
         result = handle_slash_command(
             "/new", config,
             lambda: None,
-            memory_flush_fn=lambda: False,
+            memory_flush_fn=lambda: FLUSH_FAILED,
         )
         assert result == "Session reset (memory was not saved)."
+
+    def test_new_with_nothing_to_save_is_not_reported_as_a_failure(self):
+        config = _make_config()
+        result = handle_slash_command(
+            "/new", config,
+            lambda: None,
+            memory_flush_fn=lambda: FLUSH_NOTHING,
+        )
+        assert result == "Session reset (nothing new to save)."
 
     def test_new_without_flush_fn(self):
         config = _make_config()
@@ -141,7 +151,7 @@ class TestSlashCommands:
         config = _make_config()
         result = handle_slash_command(
             "/clear", config, lambda: cleared.append(True),
-            memory_flush_fn=lambda: (flushed.append(True), True)[1],
+            memory_flush_fn=lambda: (flushed.append(True), FLUSH_SAVED)[1],
         )
         assert result == "Session reset."
         assert len(cleared) == 1
@@ -587,7 +597,7 @@ class TestSessionSlashCommands:
         loop.handle_message("hello")
 
         with patch.object(loop, "_do_memory_flush", wraps=loop._do_memory_flush) as mock_flush:
-            mock_flush.return_value = True
+            mock_flush.return_value = FLUSH_SAVED
             result = loop.handle_message("/new")
 
         assert mock_flush.called

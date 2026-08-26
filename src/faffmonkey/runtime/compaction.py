@@ -24,18 +24,33 @@ MAX_PRESERVED_BLOB_BYTES = 64 * 1024
 _PRESERVED_MARKER = "[pre-compaction history — memory flush failed]"
 _TRUNCATED_DATA_MARKER = "has_truncated_data"
 
+# memory_flush outcomes. Saved and nothing-to-save both mean nothing was
+# lost; only failed means the history held something that was not written.
+FLUSH_SAVED = "saved"
+FLUSH_NOTHING = "nothing"
+FLUSH_FAILED = "failed"
+_NOTHING_TO_SAVE = "NOTHING_TO_SAVE"
+
 _FLUSH_SYSTEM_PROMPT = (
-    "Review the conversation history. Write anything important to "
-    "the appropriate memory file (MEMORY.md, daily log, person file, "
-    "project file) before this history is summarised. Focus on facts, "
-    "decisions, preferences, and commitments that would be lost."
+    "Review the conversation history and save what would be lost when "
+    "it is summarised: facts about the user, decisions, preferences, "
+    "commitments, project state. Save by calling file_write, once per "
+    "memory file (MEMORY.md, today's daily log under memory/daily/, a "
+    "person or project file); it appends to an existing file, so send "
+    "only the new lines. It is the only tool in this step: do not read "
+    f"or edit anything first. If nothing is worth keeping, reply with "
+    f"exactly {_NOTHING_TO_SAVE}."
 )
 
 _FLUSH_TOOL_SCHEMA = {
     "type": "function",
     "function": {
         "name": "file_write",
-        "description": "Write a file within workspace/.",
+        "description": (
+            "Append to a memory file in workspace/. An existing file is "
+            "appended to, never replaced; a missing file is created. The "
+            "only tool available in this step."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -45,7 +60,7 @@ _FLUSH_TOOL_SCHEMA = {
                 },
                 "content": {
                     "type": "string",
-                    "description": "File content to write.",
+                    "description": "The lines to add.",
                 },
             },
             "required": ["path", "content"],
@@ -189,51 +204,101 @@ def _execute_flush_writes(tool_calls: list[ToolCall], workspace: Path) -> tuple[
     return (attempted, succeeded)
 
 
+def _is_nothing_to_save(text: str) -> bool:
+    return _NOTHING_TO_SAVE in text
+
+
+def _flush_attempt(
+    provider: Provider,
+    messages: list[Message],
+    model_config: ModelConfig,
+    workspace: Path,
+) -> str:
+    """One model's go at the flush: the request, one nudge, the writes.
+
+    The reply must be file_write calls or the nothing-to-save marker.
+    Anything else (prose, or a tool the history shows but this step does
+    not offer) is corrected once, naming what the model did instead,
+    because the model is choosing from the tools it saw in the history
+    rather than the one it was given.
+    """
+    request = CompletionRequest(
+        messages=messages, model=model_config.model, tools=[_FLUSH_TOOL_SCHEMA],
+    )
+    response = provider.complete(request)
+    for nudged in (False, True):
+        tool_calls = response.tool_calls or []
+        if any(tc.name == "file_write" for tc in tool_calls):
+            attempted, succeeded = _execute_flush_writes(tool_calls, workspace)
+            if succeeded == attempted:
+                return FLUSH_SAVED
+            logger.warning("memory_flush: %d of %d writes failed", attempted - succeeded, attempted)
+            return FLUSH_FAILED
+        if not tool_calls and _is_nothing_to_save(response.text):
+            return FLUSH_NOTHING
+        if nudged:
+            return FLUSH_FAILED
+        if tool_calls:
+            names = ", ".join(sorted({tc.name for tc in tool_calls}))
+            logger.warning("memory_flush: %s called %s instead of file_write", model_config.model, names)
+            did = f"You called {names}, which does not exist in this step."
+        else:
+            logger.warning("memory_flush: %s answered in prose: %.200s", model_config.model, response.text)
+            did = "You answered in prose."
+        nudge = (
+            f"{did} file_write is the only tool here and the only way to "
+            "save. Call it now for each memory file worth updating, or "
+            f"reply with exactly {_NOTHING_TO_SAVE}."
+        )
+        request = CompletionRequest(
+            messages=[
+                *messages,
+                Message(role="assistant", content=response.text),
+                Message(role="user", content=nudge),
+            ],
+            model=model_config.model,
+            tools=[_FLUSH_TOOL_SCHEMA],
+        )
+        response = provider.complete(request)
+    return FLUSH_FAILED
+
+
 def memory_flush(
     session_store: SessionStore,
     session_id: str,
     workspace: Path,
     provider_fn: Callable[[ModelConfig], Provider],
     config: Config,
-) -> bool:
+) -> str:
+    """FLUSH_SAVED, FLUSH_NOTHING or FLUSH_FAILED for this session."""
     history = session_store.get_history(session_id)
     if not history:
-        return True
+        return FLUSH_NOTHING
 
     messages = [Message(role="system", content=_FLUSH_SYSTEM_PROMPT), *history]
 
+    # A model that answered wrongly twice is not asked again under the
+    # next task's name; one that raised may have hit a transient fault.
+    answered_wrongly: set[tuple[str, str]] = set()
     for task in ("conversation", "compaction"):
         try:
             model_config = config.resolve_model(task)
         except Exception:
             continue
+        key = (model_config.provider, model_config.model)
+        if key in answered_wrongly:
+            continue
         try:
-            provider = provider_fn(model_config)
-            request = CompletionRequest(
-                messages=messages,
-                model=model_config.model,
-                tools=[_FLUSH_TOOL_SCHEMA],
-            )
-            response = provider.complete(request)
-            if not response.tool_calls:
-                logger.warning("memory_flush: provider returned no tool calls, treating as failure")
-                return False
-            attempted, succeeded = _execute_flush_writes(response.tool_calls, workspace)
-            if attempted == 0:
-                logger.warning("memory_flush: response had tool calls but no file_write entries")
-                return False
-            if succeeded == 0:
-                logger.warning("memory_flush: all %d file writes failed", attempted)
-                return False
-            if succeeded < attempted:
-                logger.warning("memory_flush: %d of %d writes failed", attempted - succeeded, attempted)
-                return False
-            return True
+            outcome = _flush_attempt(provider_fn(model_config), messages, model_config, workspace)
         except Exception as e:
             logger.warning("memory_flush failed with %s model: %s", task, e)
+            continue
+        if outcome != FLUSH_FAILED:
+            return outcome
+        answered_wrongly.add(key)
 
     logger.error("memory_flush: all models failed, proceeding without flush")
-    return False
+    return FLUSH_FAILED
 
 
 MAX_DAILY_NOTE_CHARS = 2000
@@ -675,7 +740,7 @@ def compact(
         logger.error("compaction aborted: checkpoint failed")
         return {"aborted": True, "reason": "checkpoint_failed"}
 
-    flush_ok = memory_flush(session_store, session_id, workspace, provider_fn, config)
+    flush_ok = memory_flush(session_store, session_id, workspace, provider_fn, config) != FLUSH_FAILED
 
     # Re-read after flush (flush may have triggered appends).
     history = session_store.get_history(session_id)
