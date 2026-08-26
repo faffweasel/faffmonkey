@@ -11,7 +11,7 @@ actions: feed_fetch
 - "What's new in [digest topic]?" → `feed_fetch --digest NAME`, summarise the new items
 - "Add a feed to my [name] digest" → edit `skills-data/digest-engine/digests.json` (yours to write; only `config/jobs.json` is restricted), then confirm with `feed_fetch --list`
 
-Always use this script for RSS/Atom feeds instead of web_fetch; it parses feed XML properly and tracks what has already been surfaced.
+Always use `feed_fetch` for RSS/Atom feeds instead of web_fetch; it parses feed XML properly and tracks what has already been surfaced. Run it with skill_invoke (name `digest-engine`, input the command line below), never through shell_exec.
 
 ## Commands
 
@@ -32,7 +32,7 @@ feed_fetch --reset NAME             clear seen history (after config changes)
 When a digest cron job fires:
 
 1. `feed_fetch --digest NAME --json --days 7`, returns only NEW items since the last run (dedup is automatic; previously seen items are filtered and counted in `seen_filtered`).
-2. Run each query in the digest's `web_search` list with the web_search tool; the script only handles RSS.
+2. Run each query in the digest's `web_search` list with the web_search tool; `feed_fetch` only handles RSS.
 3. Combine, then filter against the digest's `filter` text. Be ruthless: the filter describes what makes the cut, everything else is dropped.
 4. Write the digest to `shared/digests/NAME-YYYY-MM-DD.md`: a heading, then one short entry per surviving item with link and a one-line reason it matters.
 5. Deliver a brief summary via the configured channel; the file has the detail.

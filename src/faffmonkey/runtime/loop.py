@@ -827,13 +827,21 @@ class AgentLoop:
             self._notify_peers()
 
     def _check_session_rotated(self) -> None:
-        if not self._session_rotated.is_set():
-            return
+        """Adopt the store's active session if this loop's is no longer it.
+
+        The store is the authority, not the rotated event: the event only
+        reaches loops in this process, and a rotation can come from another
+        one (`faff cron run` of a rotate_session job). The event is cleared
+        for whoever set it.
+        """
         self._session_rotated.clear()
-        if self._store is not None:
-            session = self._store.get_or_create_main_session(self._active_key)
-            self._session_id = session.id
-            self.history = self._store.get_history(session.id)
+        if self._store is None:
+            return
+        session = self._store.get_or_create_main_session(self._active_key)
+        if session.id == self._session_id:
+            return
+        self._session_id = session.id
+        self.history = self._store.get_history(session.id)
 
     def _check_history_dirty(self) -> None:
         """Reload a session another thread has written to.

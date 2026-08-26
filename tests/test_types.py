@@ -37,6 +37,26 @@ class TestMessageToDict:
         d = message_to_dict(msg)
         assert d["tool_calls"][0]["function"]["arguments"] == "{}"
 
+    def test_empty_content_is_sent_as_an_empty_string(self):
+        # Wire rule: a message without tool_calls always has a content
+        # key. Ollama's compat endpoint rejects a missing key and accepts
+        # an empty string.
+        for role in ("user", "assistant", "system"):
+            assert message_to_dict(Message(role=role, content="")) == {
+                "role": role, "content": "",
+            }
+        d = message_to_dict(Message(role="tool", content="", tool_call_id="c1"))
+        assert d == {"role": "tool", "content": "", "tool_call_id": "c1"}
+
+    def test_tool_call_message_may_still_omit_empty_content(self):
+        msg = Message(
+            role="assistant", content="",
+            tool_calls=[ToolCall(id="1", name="f", arguments={})],
+        )
+        d = message_to_dict(msg)
+        assert "content" not in d
+        assert d["tool_calls"][0]["id"] == "1"
+
 
 class TestDictToMessage:
     def test_basic(self):

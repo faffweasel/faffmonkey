@@ -93,6 +93,7 @@ _TOOL_HINTS = {
     "file_edit": "replace an exact string in a workspace file",
     "web_search": "search the web",
     "shell_exec": "run a shell command in the workspace",
+    "skill_invoke": "run a skill command from its SKILL.md; never run skill scripts through shell_exec",
 }
 
 

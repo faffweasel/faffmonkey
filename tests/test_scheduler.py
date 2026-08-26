@@ -1171,6 +1171,72 @@ class TestEmptyResponseRetry:
         assert provider.complete.call_count == 3
 
 
+class TestRunMainEmptyResponse:
+    """A main-session job retries a blank reply like an isolated one and
+    never writes a blank exchange into the shared session."""
+
+    def _scheduler(self, tmp_path, provider):
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / "config").mkdir()
+        (workspace / "SOUL.md").write_text("You are a test agent.")
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        scheduler = Scheduler(
+            config=_make_config(), workspace=workspace, state_dir=state_dir,
+            resolve_provider=lambda m: provider, channels={},
+        )
+        return scheduler, state_dir
+
+    def _main_history(self, state_dir):
+        from faffmonkey.runtime.session import SessionStore
+        store = SessionStore(state_dir / "sessions.db")
+        try:
+            session = store.get_or_create_main_session(MAIN_SESSION_KEY)
+            return [(m.role, m.content) for m in store.get_history(session.id)]
+        finally:
+            store.close()
+
+    def _job(self):
+        return CronJob(
+            id="evening", schedule="* * * * *", prompt="End of day.",
+            session="main", deliver_mode="none", rotate_session=True,
+        )
+
+    def test_blank_after_retries_persists_nothing_and_skips_rotation(self, tmp_path):
+        provider = MagicMock()
+        provider.complete.return_value = CompletionResponse(text="", model="test")
+        scheduler, state_dir = self._scheduler(tmp_path, provider)
+
+        with patch("faffmonkey.runtime.scheduler.provider_preflight", return_value=True), \
+                patch("faffmonkey.runtime.scheduler._rotate_main_session") as rotate:
+            result = scheduler.run_job(self._job())
+
+        assert result.status == "error"
+        assert "empty response" in result.error
+        assert provider.complete.call_count == 1 + 3
+        rotate.assert_not_called()
+        assert self._main_history(state_dir) == []
+
+    def test_blank_then_answer_persists_one_exchange(self, tmp_path):
+        provider = MagicMock()
+        provider.complete.side_effect = [
+            CompletionResponse(text="", model="test"),
+            CompletionResponse(text="Worth remembering: nothing.", model="test"),
+        ]
+        scheduler, state_dir = self._scheduler(tmp_path, provider)
+
+        with patch("faffmonkey.runtime.scheduler.provider_preflight", return_value=True), \
+                patch("faffmonkey.runtime.scheduler._rotate_main_session"):
+            result = scheduler.run_job(self._job())
+
+        assert result.status == "success"
+        assert self._main_history(state_dir) == [
+            ("user", "End of day."),
+            ("assistant", "Worth remembering: nothing."),
+        ]
+
+
 class TestRunMainSessionClose:
     def test_session_store_closed_on_provider_error(self, tmp_path):
         config = _make_config()

@@ -808,20 +808,34 @@ def _run_isolated(
         text = response.text
         usage = usage + response.usage
 
+    text, usage = _retry_if_empty(
+        provider, messages, model_config, text, usage, job.id,
+    )
+    text, usage = _ensure_plain_text(
+        provider, messages, model_config, text, usage, job.id,
+    )
+    return text, usage
+
+
+def _retry_if_empty(
+    provider: object,
+    messages: list[Message],
+    model_config: ModelConfig,
+    text: str,
+    usage: TokenUsage,
+    job_id: str,
+) -> tuple[str, TokenUsage]:
+    """Up to EMPTY_RESPONSE_RETRIES nudges while the reply is blank."""
     for attempt in range(EMPTY_RESPONSE_RETRIES):
         if text.strip():
             break
-        logger.warning("empty response for job %s, attempt %d/%d", job.id, attempt + 1, EMPTY_RESPONSE_RETRIES)
+        logger.warning("empty response for job %s, attempt %d/%d", job_id, attempt + 1, EMPTY_RESPONSE_RETRIES)
         messages.append(Message(role="assistant", content=""))
         messages.append(Message(role="user", content="(continue)"))
         request = CompletionRequest(messages=messages, model=model_config.model)
         response = _complete_with_timeout(provider, request, timeout=model_config.timeout)
         text = response.text
         usage = usage + response.usage
-
-    text, usage = _ensure_plain_text(
-        provider, messages, model_config, text, usage, job.id,
-    )
     return text, usage
 
 
@@ -870,24 +884,34 @@ def _run_main(
             text = response.text
             usage = response.usage
 
-            session_store.append_message(session.id, "user", prompt)
+            # The exchange is written to the shared session only if the
+            # final reply is non-empty: a blank assistant row is replayed
+            # on every later chat turn, and nothing may enter the session
+            # that a provider can refuse.
+            exchange: list[tuple[str, str]] = [("user", prompt)]
 
             if _is_stale_ack(text, ack_max_chars=config.heartbeat.ack_max_chars):
                 logger.info("stale ack detected for job %s (main session), re-prompting", job.id)
-                session_store.append_message(session.id, "assistant", _redact_for_history(text, job.id))
-                messages.append(Message(role="assistant", content=text))
                 reprompt = "Please provide the actual result, not just an acknowledgement."
-                session_store.append_message(session.id, "user", reprompt)
+                exchange.append(("assistant", _redact_for_history(text, job.id)))
+                exchange.append(("user", reprompt))
+                messages.append(Message(role="assistant", content=text))
                 messages.append(Message(role="user", content=reprompt))
                 request = CompletionRequest(messages=messages, model=model_config.model)
                 response = _complete_with_timeout(provider, request, timeout=model_config.timeout)
                 text = response.text
                 usage = usage + response.usage
 
+            text, usage = _retry_if_empty(
+                provider, messages, model_config, text, usage, job.id,
+            )
             text, usage = _ensure_plain_text(
                 provider, messages, model_config, text, usage, job.id,
             )
-            session_store.append_message(session.id, "assistant", _redact_for_history(text, job.id))
+            if text.strip():
+                exchange.append(("assistant", _redact_for_history(text, job.id)))
+                for role, content in exchange:
+                    session_store.append_message(session.id, role, content)
         finally:
             if session_store is not None:
                 session_store.close()

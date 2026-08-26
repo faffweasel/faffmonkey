@@ -417,12 +417,21 @@ TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "skill_invoke",
-            "description": "Run a skill's action by name.",
+            "description": (
+                "Run a command from a skill's SKILL.md. This is the only way "
+                "to run a skill's scripts; never run them through shell_exec. "
+                "Example: name=\"digest-engine\", "
+                "input=\"feed_fetch --digest NAME --json\"."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "name": {"type": "string", "description": "Skill name."},
-                    "input": {"type": "string", "description": "Input for the skill.", "default": ""},
+                    "input": {
+                        "type": "string",
+                        "description": "The command line exactly as SKILL.md documents it.",
+                        "default": "",
+                    },
                 },
                 "required": ["name"],
             },

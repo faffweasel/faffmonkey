@@ -173,7 +173,10 @@ def message_to_dict(msg: Message) -> dict:
                 continue
             parts.append({"type": "image_url", "image_url": {"url": uri}})
         d["content"] = parts
-    elif msg.content:
+    elif msg.content or not msg.tool_calls:
+        # A message must carry content unless it carries tool_calls; an
+        # empty string is valid everywhere, a missing key is not (Ollama's
+        # compat endpoint rejects it as "content type: <nil>").
         d["content"] = msg.content
     if msg.tool_calls is not None:
         tc_list = []

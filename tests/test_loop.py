@@ -1428,6 +1428,33 @@ class TestRotationDoesNotDropTheNextMessage:
         ]
         assert loop._store.get_history(old_session_id) == []
 
+    def test_rotation_by_another_process_is_followed_without_an_event(self, tmp_path):
+        # The store decides which session is active; the rotated event is
+        # only a hint, and a rotation from another process sets none.
+        from faffmonkey.runtime.session import SessionStore
+
+        provider = _make_provider("response")
+        loop = self._loop(tmp_path, provider)
+        loop._ensure_db()
+        old_session_id = loop._session_id
+
+        other = SessionStore(tmp_path / "sessions.db")
+        other.deactivate_session(old_session_id)
+        new_session = other.get_or_create_main_session("cli")
+        other.close()
+        assert not loop._session_rotated.is_set()
+
+        loop.handle_message("after an external rotation")
+
+        assert loop._session_id == new_session.id
+        assert [
+            (m.role, m.content) for m in loop._store.get_history(new_session.id)
+        ] == [
+            ("user", "after an external rotation"),
+            ("assistant", "response"),
+        ]
+        assert loop._store.get_history(old_session_id) == []
+
     def test_rotation_mid_turn_does_not_replace_history(self, tmp_path):
         provider = MagicMock()
         loop = self._loop(tmp_path, provider)

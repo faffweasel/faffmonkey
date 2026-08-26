@@ -110,7 +110,10 @@ reasoning text, and logs the response shape whenever content comes back
 empty so the failure is diagnosable. When a turn is cut short
 mid-batch, every remaining tool call still gets an error result, since
 an assistant message with unanswered tool calls is rejected by strict
-providers on every later turn.
+providers on every later turn. On the wire every message carries a
+`content` string, empty if need be, unless it is an assistant message
+with tool calls: an empty string is valid on every OpenAI-compatible
+endpoint, a missing key is rejected by Ollama's compat layer.
 
 A failing turn does not take the channel with it. `run()` contains
 errors per message, replies with the failure, and keeps listening, so
@@ -423,9 +426,15 @@ message tagged with the job id, and every channel loop is signalled to
 reload. Without both halves the agent has no record of the message it
 just sent you, so replying to a morning briefing lands in a history
 with no briefing in it. `session: "main"` has already written the
-exchange, so it takes the signal only. The signal is the "history
-dirty" event, distinct from session rotation because the session id
-does not change. `deliver.channel` may be `"last"`: the channel the
+exchange, so it takes the signal only; it writes the exchange only
+once the reply is non-empty, after the same empty-reply retries as
+`isolated`, since every row in the shared session is replayed on every
+later turn. The signal is the "history dirty" event, distinct from
+session rotation because the session id does not change. Both events
+reach only loops in the same process, so the store is the authority on
+which session is active: each loop checks it at every turn boundary,
+which is how a rotation done by `faff cron run` in another process is
+followed. `deliver.channel` may be `"last"`: the channel the
 user most recently sent a direct message on, remembered by the
 scheduler in `cron-state.json`, falling back to the first running
 channel. The wizard-created jobs use it, so nothing is tied to
