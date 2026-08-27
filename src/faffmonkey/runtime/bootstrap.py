@@ -89,7 +89,7 @@ def _format_skills(skills: list[tuple[str, str]]) -> str:
 _TOOL_HINTS = {
     "file_read": "read a workspace file",
     "file_list": "list workspace files and directories, no shell needed",
-    "file_write": "create or overwrite a workspace file",
+    "file_write": "create or overwrite a workspace file, creating directories as needed",
     "file_edit": "replace an exact string in a workspace file",
     "web_search": "search the web",
     "shell_exec": "run a shell command in the workspace",

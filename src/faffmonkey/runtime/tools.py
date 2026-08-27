@@ -617,7 +617,18 @@ class ToolRegistry:
             return ToolResult(id=call.id, content=f"tool {call.name!r} is disabled", is_error=True)
 
         if perm == "ask" and not self._check_approval(call):
-            return ToolResult(id=call.id, content="tool execution denied by user", is_error=True)
+            # Without a prompt nobody refused anything: saying "denied by
+            # user" reads as a verdict on this command and invites a retry
+            # with a variant, each one a full round-trip.
+            if self._prompt_fn is None:
+                content = (
+                    f"tool {call.name!r} is not available on this channel: nobody "
+                    "can approve it. Use file_write or file_edit (they create "
+                    "directories), file_list, or skill_invoke instead."
+                )
+            else:
+                content = "tool execution denied by user"
+            return ToolResult(id=call.id, content=content, is_error=True)
 
         if call.name == "shell_exec" and perm == "ask":
             toctou_err = self._verify_toctou(call)
@@ -625,6 +636,15 @@ class ToolRegistry:
                 return ToolResult(id=call.id, content=toctou_err, is_error=True)
 
         return handler(call.arguments | {"_call_id": call.id})
+
+    def schemas(self) -> list[dict]:
+        """The tool definitions to advertise: a tool set to `never` is not
+        offered, so the model is not invited to call something that can
+        only answer "disabled"."""
+        return [
+            schema for schema in TOOL_SCHEMAS
+            if self._permissions.get(schema["function"]["name"], "never") != "never"
+        ]
 
     def _check_approval(self, call: ToolCall) -> bool:
         if call.name == "shell_exec":

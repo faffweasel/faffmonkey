@@ -111,9 +111,11 @@ Map of channel name to:
 
 Permission per tool: `always`, `ask` or `never`. Tools you leave out
 keep the defaults below; a tool the runtime does not know is ignored.
-`ask` prompts in `faff chat` and is denied under `faff run`,
-where nobody is there to answer; the agent is told the call was
-denied.
+`ask` prompts in `faff chat` and is denied under `faff run` and in
+cron, where nobody is there to answer; the agent is told the tool is
+not available on that channel and pointed at the file tools, so it
+does not retry variants. A tool set to `never` is not offered to the
+model at all.
 
 `shell_preapproved` inside the same block is a list of glob patterns
 (`fnmatch` against the whole command) that `shell_exec` runs without

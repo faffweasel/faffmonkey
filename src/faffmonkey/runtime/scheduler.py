@@ -1269,7 +1269,7 @@ def _run_agent(
         workspace=workspace,
         permissions=config.tool_permissions,
         shell_preapproved=config.shell_preapproved,
-        prompt_fn=lambda description: False,
+        prompt_fn=None,
         tz=str(config.timezone),
         wrap=True,
         search_provider=search_provider,

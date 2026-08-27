@@ -277,7 +277,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             workspace=workspace_dir,
             permissions=runtime.config.tool_permissions,
             shell_preapproved=runtime.config.shell_preapproved,
-            prompt_fn=lambda desc: False,
+            prompt_fn=None,
             tz=str(runtime.config.timezone),
             wrap=True,
             search_provider=runtime.search_provider,

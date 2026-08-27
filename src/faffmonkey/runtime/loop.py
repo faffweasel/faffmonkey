@@ -36,7 +36,7 @@ from faffmonkey.runtime.retry import retry_with_fallback, run_with_timeout
 from faffmonkey.runtime.scheduler import parse_timestamp, recent_cron_runs
 from faffmonkey.runtime.session import SessionStore
 from faffmonkey.runtime.skills import invoke as skill_invoke, load_full as skill_load_full, scan_skills
-from faffmonkey.runtime.tools import TOOL_SCHEMAS, ToolRegistry
+from faffmonkey.runtime.tools import ToolRegistry
 from faffmonkey.seams.channel import Channel
 from faffmonkey.seams.provider import Provider
 from faffmonkey.seams.synthesiser import NoopSynthesiser, Synthesiser
@@ -777,7 +777,7 @@ class AgentLoop:
         request = CompletionRequest(
             messages=messages,
             model=model_config.model,
-            tools=TOOL_SCHEMAS if self._tools is not None else None,
+            tools=self._tools.schemas() if self._tools is not None else None,
         )
 
         if self._debug:
@@ -797,7 +797,7 @@ class AgentLoop:
             fb_request = CompletionRequest(
                 messages=messages,
                 model=fb_model.model,
-                tools=TOOL_SCHEMAS if self._tools is not None else None,
+                tools=self._tools.schemas() if self._tools is not None else None,
             )
             fb_timeout = float(fb_model.timeout)
             fallbacks.append(lambda p=fb_provider, r=fb_request, t=fb_timeout: _provider_complete_with_timeout(p, r, t))

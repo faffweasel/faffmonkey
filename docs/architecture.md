@@ -156,7 +156,8 @@ as the user's own words.
   completion-only.
 - **Agent** (cron only): one ephemeral tool-capable AgentLoop turn.
   Zero persistence (sessions.db is never touched), standard loop
-  budgets, `ask` permissions denied (no human present), `job.model`
+  budgets, `ask` permissions denied with a "not available on this
+  channel" result (no human present, so no retry loop), `job.model`
   routes the turn, except that a request carrying an image goes to
   `image_understanding` whatever the override says (see cron modes
   below). The only durable artefacts are what skills write to the

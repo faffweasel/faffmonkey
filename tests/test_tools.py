@@ -2397,6 +2397,48 @@ class TestFileList:
         assert "file_list" in [t["function"]["name"] for t in TOOL_SCHEMAS]
 
 
+class TestUnattendedDenial:
+    """2026-08-27: under a channel every shell_exec came back "denied by
+    user", so the model tried variants until the round-trip cap ended the
+    turn. Nobody had denied anything; there was nobody to ask."""
+
+    def test_no_prompt_says_the_tool_is_unavailable(self, ws):
+        registry = _registry(ws, {"shell_exec": "ask"}, prompt_fn=None)
+        result = registry.dispatch(
+            ToolCall(id="tc1", name="shell_exec", arguments={"command": "mkdir x"})
+        )
+        assert result.is_error
+        assert "not available on this channel" in result.content
+        assert "file_write" in result.content
+        assert "denied by user" not in result.content
+
+    def test_a_person_saying_no_is_still_a_denial(self, ws):
+        registry = _registry(ws, {"shell_exec": "ask"}, prompt_fn=lambda _: False)
+        result = registry.dispatch(
+            ToolCall(id="tc1", name="shell_exec", arguments={"command": "mkdir x"})
+        )
+        assert result.is_error
+        assert result.content == "tool execution denied by user"
+
+
+class TestAdvertisedSchemas:
+    """A tool the model is told is disabled should not be offered to it."""
+
+    def test_never_tools_are_not_offered(self, ws):
+        registry = _registry(ws, {"file_read": "always", "shell_exec": "never"})
+        names = [s["function"]["name"] for s in registry.schemas()]
+        assert "file_read" in names
+        assert "shell_exec" not in names
+
+    def test_unlisted_tools_are_not_offered(self, ws):
+        registry = _registry(ws, {"file_read": "always"})
+        assert [s["function"]["name"] for s in registry.schemas()] == ["file_read"]
+
+    def test_ask_tools_are_offered(self, ws):
+        registry = _registry(ws, {"shell_exec": "ask"})
+        assert [s["function"]["name"] for s in registry.schemas()] == ["shell_exec"]
+
+
 class TestSafeWriteText:
     def test_raises_on_symlink(self, tmp_path):
         target = tmp_path / "target.txt"
