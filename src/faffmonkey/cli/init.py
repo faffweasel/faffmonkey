@@ -340,10 +340,21 @@ def run_init(base_path: Path) -> None:
             except FileNotFoundError:
                 pass
         if not p.exists():
-            if d in sensitive_dirs:
-                os.mkdir(p, 0o700)
-            else:
-                p.mkdir(parents=True, exist_ok=True)
+            try:
+                if d in sensitive_dirs:
+                    os.mkdir(p, 0o700)
+                else:
+                    p.mkdir(parents=True, exist_ok=True)
+            except PermissionError:
+                # A bind mount whose host directory did not exist is created
+                # by Docker as root, and the container runs as FAFF_UID.
+                raise SystemExit(
+                    f"cannot create {p}: permission denied.\n"
+                    "The data root is owned by another user, usually because "
+                    "Docker created a missing mount directory as root. On the "
+                    "host, delete it and create the data root as yourself:\n"
+                    "  mkdir -p $FAFF_HOME/workspace $FAFF_HOME/state $FAFF_HOME/extensions"
+                )
             print(f"  created: {p}/")
         elif d in sensitive_dirs:
             try:

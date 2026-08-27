@@ -148,10 +148,17 @@ Written by `faff setup voice`. Either side can be configured alone.
 
 All runtime data lives under `$FAFF_HOME` (default `~/.faffmonkey`):
 `workspace/`, `state/`, `extensions/`, `backups/` and
-`requirements.extra.txt`. Set `FAFF_HOME` in the shell or in a `.env`
-file next to `docker-compose.yml` to relocate it. Inside the container
+`requirements.extra.txt`. Set `FAFF_HOME` in the shell or in the `.env`
+file next to `docker-compose.yml` to relocate it. Both compose and the
+host-side `./bin/faff` read that file, so every setup wizard writes to
+the same data root the container mounts; the shell wins if both are set.
+Use an absolute path: a relative one resolves against the checkout,
+which puts the data where a deploy can delete it. Inside the container
 the image pins `FAFF_HOME=/app`, where compose mounts the host's data
 root.
+
+Running several agents on one machine means one checkout and one data
+root per agent, each checkout's `.env` naming its own `FAFF_HOME`.
 
 ## state/.env
 
@@ -162,7 +169,7 @@ reads config. Env var names must match
 is not set at startup is a config error, not a runtime surprise.
 
 `state/.env` is separate from the `.env` next to `docker-compose.yml`,
-which only holds `FAFF_UID` and `FAFF_GID` for compose.
+which only holds `FAFF_UID`, `FAFF_GID` and `FAFF_HOME`.
 
 The runtime does not read the file itself: compose injects it as the
 container's environment at creation time. After adding or changing a

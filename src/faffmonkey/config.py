@@ -21,6 +21,30 @@ def data_root() -> Path:
     return Path(os.environ.get("FAFF_HOME") or "~/.faffmonkey").expanduser().resolve()
 
 
+def apply_compose_env(checkout: Path) -> None:
+    """Honour FAFF_HOME from the .env beside docker-compose.yml.
+
+    Compose reads that file for its mounts, so the host CLI must resolve
+    the same data root or a setup wizard writes into a different install.
+    The shell environment wins; a relative value resolves against the
+    checkout, exactly as compose resolves it.
+    """
+    if os.environ.get("FAFF_HOME"):
+        return
+    try:
+        lines = (checkout / ".env").read_text().splitlines()
+    except OSError:
+        return
+    for line in lines:
+        key, sep, value = line.strip().partition("=")
+        if not sep or key.strip() != "FAFF_HOME":
+            continue
+        value = value.strip().strip("'\"")
+        if value:
+            os.environ["FAFF_HOME"] = str((checkout / Path(value).expanduser()).resolve())
+        return
+
+
 class ConfigError(Exception):
     pass
 

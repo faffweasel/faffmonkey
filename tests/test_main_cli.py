@@ -9,7 +9,7 @@ from faffmonkey.cli.__main__ import (
     _workspace_dir_arg,
     build_parser,
 )
-from faffmonkey.config import data_root
+from faffmonkey.config import apply_compose_env, data_root
 
 
 class TestDataRoot:
@@ -28,6 +28,50 @@ class TestDataRoot:
     def test_empty_env_falls_back_to_default(self, tmp_path, monkeypatch):
         monkeypatch.setenv("FAFF_HOME", "")
         monkeypatch.setenv("HOME", str(tmp_path))
+        assert data_root() == (tmp_path / ".faffmonkey").resolve()
+
+
+class TestComposeEnv:
+    """2026-08-27: a second agent's checkout had FAFF_HOME in its compose
+    .env, which only compose read. Its telegram wizard wrote the token
+    and the daily jobs into the first agent's data root."""
+
+    def test_reads_faff_home_from_checkout_env(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("FAFF_HOME", raising=False)
+        (tmp_path / ".env").write_text(
+            "FAFF_UID=1000\n# comment\nFAFF_HOME=/srv/joy\n"
+        )
+        apply_compose_env(tmp_path)
+        assert data_root() == Path("/srv/joy").resolve()
+
+    def test_shell_wins_over_env_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("FAFF_HOME", str(tmp_path / "shell"))
+        (tmp_path / ".env").write_text("FAFF_HOME=/srv/joy\n")
+        apply_compose_env(tmp_path)
+        assert data_root() == (tmp_path / "shell").resolve()
+
+    def test_relative_path_resolves_against_checkout_like_compose(
+        self, tmp_path, monkeypatch,
+    ):
+        monkeypatch.delenv("FAFF_HOME", raising=False)
+        (tmp_path / ".env").write_text("FAFF_HOME=.faffmonkey-joy\n")
+        apply_compose_env(tmp_path)
+        assert data_root() == (tmp_path / ".faffmonkey-joy").resolve()
+
+    def test_tilde_and_quotes(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("FAFF_HOME", raising=False)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        (tmp_path / ".env").write_text('FAFF_HOME="~/.faffmonkey-joy"\n')
+        apply_compose_env(tmp_path)
+        assert data_root() == (tmp_path / ".faffmonkey-joy").resolve()
+
+    def test_missing_file_or_key_keeps_default(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("FAFF_HOME", raising=False)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        apply_compose_env(tmp_path)
+        assert data_root() == (tmp_path / ".faffmonkey").resolve()
+        (tmp_path / ".env").write_text("FAFF_UID=1000\nFAFF_HOME=\n")
+        apply_compose_env(tmp_path)
         assert data_root() == (tmp_path / ".faffmonkey").resolve()
 
 

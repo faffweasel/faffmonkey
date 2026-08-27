@@ -2,8 +2,11 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+CHECKOUT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(CHECKOUT / "src"))
 
+from faffmonkey.config import apply_compose_env
 from faffmonkey.cli.__main__ import main
 
+apply_compose_env(CHECKOUT)
 main()

@@ -47,7 +47,11 @@ The split exists because a deploy replaces the checkout wholesale: on
 2026-08-24 a deploy rsync deleted an install's workspace, state and the
 backups stored inside state/, all of which lived in the checkout.
 Inside the container the image pins FAFF_HOME=/app, where compose
-mounts the host's data root, so container paths never change.
+mounts the host's data root, so container paths never change. On the
+host, bin/faff reads FAFF_HOME from the .env beside docker-compose.yml
+(config.apply_compose_env) when the shell has not set it, so the setup
+wizards and compose always resolve the same data root; a second agent
+is a second checkout with its own .env and data root.
 
 - **workspace/** is the agent's filesystem: SOUL.md, IDENTITY.md,
   USER.md, AGENTS.md, HEARTBEAT.md, MEMORY.md, LEARNINGS.md, memory/,

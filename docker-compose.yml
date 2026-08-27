@@ -18,8 +18,10 @@ services:
     user: "${FAFF_UID:-1000}:${FAFF_GID:-1000}"
     # The host side of every mount is the data root: $FAFF_HOME, default
     # ~/.faffmonkey. Override it in the shell or in a .env file next to
-    # this file. Data never lives in the checkout: a deploy that replaces
-    # the checkout must not be able to touch it.
+    # this file; bin/faff reads the same file so the host-side wizards
+    # write where the container mounts. Use an absolute path: a relative
+    # one lands inside the checkout. Data never lives in the checkout: a
+    # deploy that replaces the checkout must not be able to touch it.
     volumes:
       - ${FAFF_HOME:-~/.faffmonkey}/workspace:/app/workspace:rw
       - ${FAFF_HOME:-~/.faffmonkey}/state:/app/state:rw

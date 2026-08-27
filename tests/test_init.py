@@ -405,6 +405,19 @@ class TestInitCommandsFile:
 class TestInitSurvivesDamage:
     """H2/D30: init is the documented repair, and it crashed on the input."""
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory modes")
+    def test_unwritable_data_root_explains_itself(self, project_dir):
+        """A bind mount Docker created as root gave a bare traceback."""
+        project_dir.mkdir(mode=0o500)
+        try:
+            with pytest.raises(SystemExit) as exc:
+                _run_init_noninteractive(project_dir)
+        finally:
+            project_dir.chmod(0o700)
+        message = str(exc.value)
+        assert "permission denied" in message
+        assert "mkdir -p" in message
+
     def test_corrupt_config_is_kept_aside_and_recreated(self, project_dir):
         project_dir.mkdir()
         (project_dir / "state").mkdir()

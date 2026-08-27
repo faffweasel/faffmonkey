@@ -47,8 +47,9 @@ The container runs as uid 1000, not root, so everything it writes to
 the `workspace/` and `state/` bind mounts is owned by uid 1000 on the
 host. If your user is not 1000:1000, set `FAFF_UID` and `FAFF_GID` for
 every compose command, either in the shell or in a `.env` file next to
-`docker-compose.yml` (that file is for compose variable interpolation
-and is separate from `state/.env`):
+`docker-compose.yml` (that file holds `FAFF_UID`, `FAFF_GID` and
+`FAFF_HOME`, is read by compose and by `./bin/faff`, and is separate
+from `state/.env`):
 
 ```bash
 echo "FAFF_UID=$(id -u)" >> .env
