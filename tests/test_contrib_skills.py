@@ -3,6 +3,7 @@
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -13,10 +14,14 @@ _CONTRIB_SKILLS = Path(__file__).resolve().parent.parent / "contrib" / "skills"
 def _run(skill: str, script: str, args: list[str], env: dict[str, str]):
     cmd = [sys.executable, str(_CONTRIB_SKILLS / skill / "scripts" / script)]
     cmd.extend(args)
-    full_env = {"PATH": "/usr/bin:/bin", **env}
-    return subprocess.run(
-        cmd, capture_output=True, text=True, timeout=30, env=full_env,
-    )
+    # Without WORKSPACE a script falls back to its own grandparent, which
+    # here is contrib/, and a skill that seeds its config writes into the
+    # checkout.
+    with tempfile.TemporaryDirectory() as scratch:
+        full_env = {"PATH": "/usr/bin:/bin", "WORKSPACE": scratch, **env}
+        return subprocess.run(
+            cmd, capture_output=True, text=True, timeout=30, env=full_env,
+        )
 
 
 class TestOpenrouterImageOutput:
@@ -24,19 +29,17 @@ class TestOpenrouterImageOutput:
     bare shared/images/<name>.png with no date, while venice-ai-media filed
     its output under shared/media/ by timestamp."""
 
-    def test_default_output_is_dated_under_shared_media(self, tmp_path):
+    def test_default_output_is_dated_under_shared_media(self, monkeypatch, tmp_path):
+        # WORKSPACE before the reload: generate loads its config at import
+        # and seeds skills-data under whatever workspace it resolves.
+        monkeypatch.setenv("WORKSPACE", str(tmp_path))
         sys.path.insert(0, str(_CONTRIB_SKILLS / "openrouter-image-simple" / "scripts"))
         try:
             import importlib
-            import os
             import re
             import generate
             importlib.reload(generate)
-            os.environ["WORKSPACE"] = str(tmp_path)
-            try:
-                out = Path(generate.default_output())
-            finally:
-                del os.environ["WORKSPACE"]
+            out = Path(generate.default_output())
         finally:
             sys.path.pop(0)
         assert out.parent == tmp_path / "shared" / "media" / "openrouter"
@@ -473,8 +476,11 @@ class TestVeniceMedia:
         assert result.returncode == 2
         assert "VENICE_API_KEY" in result.stderr
 
-    def _load_venice_image(self):
+    def _load_venice_image(self, monkeypatch, tmp_path):
         import importlib.util
+        # The script loads its config at import and seeds skills-data under
+        # whatever workspace it resolves; never let that be the checkout.
+        monkeypatch.setenv("WORKSPACE", str(tmp_path))
         path = _CONTRIB_SKILLS / "venice-ai-media" / "scripts" / "venice-image.py"
         sys.path.insert(0, str(path.parent))
         try:
@@ -485,10 +491,10 @@ class TestVeniceMedia:
             sys.path.pop(0)
         return mod
 
-    def test_sizing_params_sent_only_when_requested(self, monkeypatch):
+    def test_sizing_params_sent_only_when_requested(self, monkeypatch, tmp_path):
         """2026-08-24: unconditional width/height defaults broke every
         aspect-ratio model, including the skill's own default model."""
-        mod = self._load_venice_image()
+        mod = self._load_venice_image(monkeypatch, tmp_path)
         captured = {}
         monkeypatch.setattr(
             mod, "api_json",
@@ -541,7 +547,7 @@ class TestVeniceMedia:
             importlib.reload(venice_common)
         finally:
             sys.path.pop(0)
-        mod = self._load_venice_image()
+        mod = self._load_venice_image(monkeypatch, tmp_path)
 
         def boom(**kwargs):
             raise RuntimeError("model rejected the request")
@@ -556,8 +562,9 @@ class TestVeniceMedia:
         assert not (tmp_path / "shared" / "media" / "venice-image").exists()
 
     def test_seed_config_supplies_defaults_without_user_config(self, monkeypatch, tmp_path):
-        """Defaults ship as the skill directory's config.json, not as model
-        ids in code; a fresh install resolves models from the seed."""
+        """Defaults ship as the skill's seed/config.json, not as model ids
+        in code; a fresh install copies the seed into skills-data and
+        resolves models from that copy."""
         import importlib
         monkeypatch.setenv("WORKSPACE", str(tmp_path))
         monkeypatch.delenv("SKILL_DATA", raising=False)
@@ -571,6 +578,31 @@ class TestVeniceMedia:
         assert cfg["edit"]["model"] == "firered-image-edit-1.1"
         assert cfg["image"]["model"] == "qwen-image-3"
         assert "gpt" not in json.dumps(cfg)
+        copied = tmp_path / "skills-data" / "venice-ai-media" / "config.json"
+        assert json.loads(copied.read_text()) == cfg
+
+    def test_seed_is_never_read_once_the_copy_exists(self, monkeypatch, tmp_path):
+        """2026-08-27: an agent set its edit model in the installed skill's
+        own config, which marked the skill modified and was lost on
+        reinstall. Only the skills-data copy counts."""
+        import importlib
+        import shutil
+        skill = tmp_path / "skills" / "venice-ai-media"
+        shutil.copytree(_CONTRIB_SKILLS / "venice-ai-media", skill)
+        monkeypatch.setenv("WORKSPACE", str(tmp_path))
+        monkeypatch.delenv("SKILL_DATA", raising=False)
+        sys.path.insert(0, str(skill / "scripts"))
+        try:
+            import venice_common
+            importlib.reload(venice_common)
+            venice_common.load_config()
+            (skill / "seed" / "config.json").write_text(json.dumps({
+                "edit": {"model": "seedream-v5-pro-edit"},
+            }))
+            assert venice_common.load_config()["edit"]["model"] == "firered-image-edit-1.1"
+        finally:
+            sys.path.pop(0)
+            importlib.reload(venice_common)
 
     def test_config_ignores_foreign_skill_data_env(self, monkeypatch, tmp_path):
         """2026-08-24: venice-edit as selfie's IMAGE_EDIT_CMD subprocess

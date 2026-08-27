@@ -30,8 +30,8 @@ print `MEDIA:` lines.
 
 ## Configuration (optional)
 
-`skills-data/venice-ai-media/config.json` overrides the built-in default
-models (same pattern as openrouter-image-simple):
+The models live in `skills-data/venice-ai-media/config.json` (same
+pattern as openrouter-image-simple):
 
 ```json
 {
@@ -41,12 +41,14 @@ models (same pattern as openrouter-image-simple):
 }
 ```
 
-Defaults ship as a seed `config.json` in the skill directory itself
-(editable in the installed skill); the skills-data file overrides it
-per key, and no model id lives in code. `--model` on any script
-overrides per call. Venice's catalogue moves quickly and varies by account
-tier, so run `--list-models` on venice-image, venice-edit, or venice-video
-and pin what your tier actually offers.
+That file is created on first run by copying the skill's
+`seed/config.json`, and is the only config the scripts read after that.
+Edit it, not the seed: the seed is never consulted again, and changing
+anything in the installed skill directory only makes `faff update`
+report the skill as modified. No model id lives in code. `--model` on
+any script overrides per call. Venice's catalogue moves quickly and
+varies by account tier, so run `--list-models` on venice-image,
+venice-edit, or venice-video and pin what your tier actually offers.
 
 ## Notes
 

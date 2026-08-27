@@ -140,8 +140,7 @@ def main() -> int:
     if not args.model:
         print(
             "Error: no model configured. Set it in "
-            "skills-data/venice-ai-media/config.json (or the skill's own "
-            "config.json), or pass --model.",
+            "skills-data/venice-ai-media/config.json, or pass --model.",
             file=sys.stderr,
         )
         return 2

@@ -4,6 +4,7 @@ import base64
 import datetime
 import json
 import os
+import shutil
 import sys
 import urllib.error
 import urllib.request
@@ -29,37 +30,25 @@ def config_file() -> str:
     return os.path.join(workspace, "skills-data", SKILL_NAME, "config.json")
 
 
-def _seed_config() -> dict:
-    """Shipped defaults as data: the skill directory's config.json."""
-    seed_path = os.path.join(SKILL_DIR, "config.json")
+def load_config() -> dict:
+    """skills-data/openrouter-image-simple/config.json, copied from the
+    skill's seed/config.json on first run and the only config read after
+    that. The seed is never consulted again, so editing the installed
+    skill directory changes nothing except its install hash."""
+    path = config_file()
+    if not os.path.isfile(path):
+        seed = os.path.join(SKILL_DIR, "seed", "config.json")
+        if os.path.isfile(seed):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            shutil.copy2(seed, path)
+            print(f"seeded {path}", file=sys.stderr)
     try:
-        with open(seed_path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         return data if isinstance(data, dict) else {}
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"warning: {path} unreadable ({e}); no model configured", file=sys.stderr)
         return {}
-
-
-def load_config() -> dict:
-    merged = _seed_config()
-    path = config_file()
-    if os.path.isfile(path):
-        try:
-            with open(path, encoding="utf-8") as f:
-                user = json.load(f)
-            if isinstance(user, dict):
-                for key, value in user.items():
-                    if isinstance(value, dict) and isinstance(merged.get(key), dict):
-                        merged[key] = {**merged[key], **value}
-                    else:
-                        merged[key] = value
-            return merged
-        except (json.JSONDecodeError, OSError) as e:
-            print(
-                f"warning: {path} unreadable ({e}); using seed defaults",
-                file=sys.stderr,
-            )
-    return merged
 
 
 def get_api_key() -> str:

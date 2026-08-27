@@ -34,8 +34,7 @@ both generation and editing.
 
 ## Configuration (optional)
 
-`skills-data/openrouter-image-simple/config.json` overrides the built-in
-defaults:
+The models live in `skills-data/openrouter-image-simple/config.json`:
 
 ```json
 {
@@ -47,10 +46,13 @@ defaults:
 }
 ```
 
-Defaults ship as a seed `config.json` in the skill directory itself
-(currently Gemini 3.1 Flash Image for generation, Gemini 3.6 Flash for
-vision); the skills-data file overrides it per key, and no model id
-lives in code. Aliases let you say `--model gemini-pro` instead of full IDs.
+That file is created on first run by copying the skill's
+`seed/config.json` (currently Gemini 3.1 Flash Image for generation,
+Gemini 3.6 Flash for vision), and is the only config the scripts read
+after that. Edit it, not the seed: the seed is never consulted again,
+and changing anything in the installed skill directory only makes
+`faff update` report the skill as modified. No model id lives in code.
+Aliases let you say `--model gemini-pro` instead of full IDs.
 
 ## Output
 

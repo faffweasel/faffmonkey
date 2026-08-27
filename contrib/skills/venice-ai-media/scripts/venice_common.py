@@ -4,6 +4,7 @@ import base64
 import datetime as dt
 import json
 import os
+import shutil
 import sys
 import urllib.error
 import urllib.request
@@ -253,47 +254,37 @@ def _config_file() -> str:
     SKILL_DATA must not be consulted: when a script here runs as another
     skill's subprocess (selfie's IMAGE_EDIT_CMD), it inherits the CALLER's
     SKILL_DATA and would read that skill's config instead of this one's.
+    Read from the environment on every call: this module is shared, so
+    baking the path in at import time would pin it to whichever script
+    imported first.
     """
-    return os.path.join(WORKSPACE, "skills-data", SKILL_NAME, "config.json")
-
-
-def _seed_config() -> dict:
-    """The skill's shipped defaults: a config file beside the scripts,
-    editable in the installed skill, never a model id in code."""
-    seed_path = Path(SKILL_DIR) / "config.json"
-    try:
-        with open(seed_path, encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except (json.JSONDecodeError, OSError):
-        return {}
+    workspace = os.environ.get("WORKSPACE", "")
+    if not workspace:
+        workspace = os.path.dirname(os.path.dirname(SKILL_DIR))
+    return os.path.join(workspace, "skills-data", SKILL_NAME, "config.json")
 
 
 def load_config() -> dict:
-    """The seed config merged under skills-data/venice-ai-media/config.json.
+    """skills-data/venice-ai-media/config.json, copied from the skill's
+    seed/config.json on first run and the only config read after that.
 
-    Defaults ship as data (the skill directory's config.json), the
-    operator's per-install file overrides per key, and no model id lives
-    in code.
+    The seed is data, not code, and is never consulted again: editing the
+    installed skill directory changes nothing except the skill's install
+    hash. No model id lives in code.
     """
-    merged = _seed_config()
     path = _config_file()
-    if os.path.isfile(path):
-        try:
-            with open(path, encoding="utf-8") as f:
-                user = json.load(f)
-            if isinstance(user, dict):
-                for key, value in user.items():
-                    if isinstance(value, dict) and isinstance(merged.get(key), dict):
-                        merged[key] = {**merged[key], **value}
-                    else:
-                        merged[key] = value
-            return merged
-        except (json.JSONDecodeError, OSError) as e:
-            # Silence here once hid a real config behind a hardcoded
-            # fallback model; say what happened.
-            print(
-                f"warning: {path} unreadable ({e}); using built-in defaults",
-                file=sys.stderr,
-            )
-    return merged
+    if not os.path.isfile(path):
+        seed = Path(SKILL_DIR) / "seed" / "config.json"
+        if seed.is_file():
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            shutil.copy2(seed, path)
+            print(f"seeded {path}", file=sys.stderr)
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError) as e:
+        # Silence here once hid a real config behind a hardcoded
+        # fallback model; say what happened.
+        print(f"warning: {path} unreadable ({e}); no model configured", file=sys.stderr)
+        return {}
