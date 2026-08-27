@@ -21,7 +21,7 @@ lives in the data root, `$FAFF_HOME` (default `~/.faffmonkey`), which
 has to create the mounts as root.
 
 ```bash
-mkdir -p ~/.faffmonkey/workspace ~/.faffmonkey/state ~/.faffmonkey/extensions
+mkdir -p ~/.faffmonkey/{workspace,state,extensions,backups}
 docker compose build
 docker compose run --rm faffmonkey faff init
 docker compose run --rm faffmonkey faff setup provider
@@ -29,8 +29,9 @@ docker compose run --rm faffmonkey faff setup provider
 
 To put the data root somewhere else, write `FAFF_HOME=/absolute/path`
 into a `.env` file next to `docker-compose.yml` before any of the
-above, and create the three directories under that path instead of
-`~/.faffmonkey`. Both compose and `./bin/faff` read the file. A
+above, and create the four directories under that path instead of
+`~/.faffmonkey`. All four are bind mounts; one you have not created
+is created by Docker as root and the container cannot write to it. Both compose and `./bin/faff` read the file. A
 relative path resolves against the checkout, which is exactly where
 data must not live.
 

@@ -21,8 +21,18 @@ def snapshot_data(root: Path, backups_dir: Path) -> Path:
     self-describing; restore recognises the old state-only layout by the
     absence of those prefixes.
     """
-    backups_dir.mkdir(parents=True, exist_ok=True)
-    os.chmod(backups_dir, 0o700)
+    try:
+        backups_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(backups_dir, 0o700)
+    except PermissionError:
+        # A bind mount whose host directory did not exist is created by
+        # Docker as root; the quickstart mkdir must include backups/.
+        raise SystemExit(
+            f"cannot use {backups_dir}: permission denied.\n"
+            "It is owned by another user, usually because Docker created "
+            "the mount directory as root. On the host:\n"
+            f"  sudo chown $(id -u):$(id -g) {backups_dir}"
+        )
 
     # Microseconds: "faff backup && faff update" on a small database makes
     # two snapshots in the same second, and they must not share a name.

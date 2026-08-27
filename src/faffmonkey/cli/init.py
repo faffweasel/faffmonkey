@@ -353,7 +353,7 @@ def run_init(base_path: Path) -> None:
                     "The data root is owned by another user, usually because "
                     "Docker created a missing mount directory as root. On the "
                     "host, delete it and create the data root as yourself:\n"
-                    "  mkdir -p $FAFF_HOME/workspace $FAFF_HOME/state $FAFF_HOME/extensions"
+                    "  mkdir -p $FAFF_HOME/{workspace,state,extensions,backups}"
                 )
             print(f"  created: {p}/")
         elif d in sensitive_dirs:

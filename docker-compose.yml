@@ -1,7 +1,7 @@
 # Quickstart (data lives in $FAFF_HOME, default ~/.faffmonkey; faff init
 # creates state/.env there and faff setup provider populates it; if you
 # set FAFF_HOME in .env, create the three directories under it instead):
-#   mkdir -p ~/.faffmonkey/workspace ~/.faffmonkey/state ~/.faffmonkey/extensions
+#   mkdir -p ~/.faffmonkey/{workspace,state,extensions,backups}
 #   docker compose build
 #   docker compose run --rm faffmonkey faff init
 #   docker compose run --rm faffmonkey faff setup provider

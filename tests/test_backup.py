@@ -150,6 +150,27 @@ class TestBackup:
             assert entry.suffix == ".gz"
 
 
+class TestUnownedBackupsDir:
+    """2026-08-27: a second agent's quickstart mkdir omitted backups/, Docker
+    created that mount as root, and faff update died in os.chmod with a
+    bare traceback."""
+
+    def test_explains_ownership_and_the_fix(self, tmp_path):
+        import pytest
+        if os.geteuid() == 0:
+            pytest.skip("root ignores directory modes")
+        backups_dir = tmp_path / "backups"
+        backups_dir.mkdir(mode=0o500)
+        # A mode we can change is not the failure; make chmod itself fail
+        # the way it does on a directory another user owns.
+        with patch("faffmonkey.cli.backup.os.chmod", side_effect=PermissionError(1, "Operation not permitted")):
+            with pytest.raises(SystemExit) as exc:
+                snapshot_data(tmp_path, backups_dir)
+        message = str(exc.value)
+        assert "permission denied" in message
+        assert "chown" in message and str(backups_dir) in message
+
+
 class TestSnapshotCollision:
     """P7-M2: two snapshots in the same second truncated each other."""
 
