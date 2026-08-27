@@ -1468,7 +1468,8 @@ class TestFileEdit:
             "edits": [{"old_text": "ask", "new_text": "always"}],
         })
         result = reg.dispatch(call)
-        assert "protected file" in result.content
+        assert result.is_error
+        assert "only the operator edits it" in result.content
         assert "ask" in (ws / "state" / "config.json").read_text()
 
     def test_heartbeat_md_edit_is_how_the_agent_keeps_its_watch_list(self, ws):
@@ -2983,3 +2984,263 @@ class TestDispatchTimeout:
         assert registry.dispatch_timeout(
             ToolCall(id="t", name="file_read", arguments={"path": "x"})
         ) == 120.0
+
+
+def _call(registry, name, **arguments):
+    return registry.dispatch(ToolCall(id="t", name=name, arguments=arguments))
+
+
+_FILE_TOOLS = {
+    "file_write": "always", "file_search": "always", "file_copy": "always",
+    "file_move": "always", "file_delete": "always",
+}
+
+
+class TestFileToolsAreWiredEverywhere:
+    """A tool needs a schema, a default permission and a handler; one
+    missing means the model is offered a tool that answers 'disabled'."""
+
+    def test_schema_permission_and_handler_agree(self, ws):
+        from faffmonkey.config import DEFAULT_TOOL_PERMISSIONS
+        from faffmonkey.runtime.tools import TOOL_SCHEMAS
+        names = {t["function"]["name"] for t in TOOL_SCHEMAS}
+        assert names == set(DEFAULT_TOOL_PERMISSIONS)
+        assert names == set(_registry(ws)._handlers)
+
+
+class TestFileWriteAppend:
+    def test_append_adds_to_the_end_and_creates_when_missing(self, ws):
+        registry = _registry(ws, _FILE_TOOLS, wrap=False)
+        r = _call(registry, "file_write", path="LEARNINGS.md", content="one\n", mode="append")
+        assert not r.is_error and "appended" in r.content
+        _call(registry, "file_write", path="LEARNINGS.md", content="two\n", mode="append")
+        assert (ws / "LEARNINGS.md").read_text() == "one\ntwo\n"
+
+    def test_overwrite_is_still_the_default(self, ws):
+        registry = _registry(ws, _FILE_TOOLS, wrap=False)
+        _call(registry, "file_write", path="a.md", content="first")
+        _call(registry, "file_write", path="a.md", content="second")
+        assert (ws / "a.md").read_text() == "second"
+
+    def test_unknown_mode_is_an_error(self, ws):
+        r = _call(_registry(ws, _FILE_TOOLS), "file_write", path="a.md", content="x", mode="prepend")
+        assert r.is_error and not (ws / "a.md").exists()
+
+    def test_append_respects_protected_paths(self, ws):
+        (ws / "config").mkdir()
+        (ws / "config" / "jobs.json").write_text("[]")
+        r = _call(_registry(ws, _FILE_TOOLS), "file_write",
+                  path="config/jobs.json", content="x", mode="append")
+        assert r.is_error and "protected" in r.content
+        assert (ws / "config" / "jobs.json").read_text() == "[]"
+
+    def test_append_refuses_symlink(self, ws, tmp_path):
+        secret = tmp_path / "secret"
+        secret.write_text("KEY=1\n")
+        (ws / "link").symlink_to(secret)
+        r = _call(_registry(ws, _FILE_TOOLS), "file_write", path="link", content="x", mode="append")
+        assert r.is_error
+        assert secret.read_text() == "KEY=1\n"
+
+
+class TestFileSearch:
+    def _populated(self, ws):
+        (ws / "memory" / "daily").mkdir(parents=True)
+        (ws / "memory" / "daily" / "2026-08-27.md").write_text("Met Joy.\nSpoke about the Word of the day.\n")
+        (ws / "documents").mkdir()
+        (ws / "documents" / "notes.txt").write_text("word count\n")
+        (ws / "documents" / "image.png").write_bytes(b"\x89PNG\x00\x00word")
+        return _registry(ws, _FILE_TOOLS, wrap=False)
+
+    def test_recursive_case_insensitive_with_path_and_line(self, ws):
+        r = _call(self._populated(ws), "file_search", pattern="word")
+        assert not r.is_error
+        assert r.content.splitlines() == [
+            "documents/notes.txt:1: word count",
+            "memory/daily/2026-08-27.md:2: Spoke about the Word of the day.",
+        ]
+
+    def test_binary_files_are_skipped(self, ws):
+        r = _call(self._populated(ws), "file_search", pattern="word")
+        assert "image.png" not in r.content
+
+    def test_glob_and_path_narrow_the_search(self, ws):
+        registry = self._populated(ws)
+        r = _call(registry, "file_search", pattern="word", glob="*.md")
+        assert r.content.splitlines() == ["memory/daily/2026-08-27.md:2: Spoke about the Word of the day."]
+        r = _call(registry, "file_search", pattern="word", path="documents")
+        assert r.content.splitlines() == ["documents/notes.txt:1: word count"]
+
+    def test_regex_and_invalid_regex(self, ws):
+        registry = self._populated(ws)
+        r = _call(registry, "file_search", pattern=r"^met\s+\w+\.$", regex=True)
+        assert r.content.splitlines() == ["memory/daily/2026-08-27.md:1: Met Joy."]
+        r = _call(registry, "file_search", pattern="(", regex=True)
+        assert r.is_error and "invalid regex" in r.content
+
+    def test_literal_pattern_with_regex_characters(self, ws):
+        registry = self._populated(ws)
+        (ws / "documents" / "q.md").write_text("what (really)?\n")
+        r = _call(registry, "file_search", pattern="(really)?")
+        assert r.content.splitlines() == ["documents/q.md:1: what (really)?"]
+
+    def test_no_matches_reports_files_searched(self, ws):
+        r = _call(self._populated(ws), "file_search", pattern="zzz")
+        assert not r.is_error and r.content.startswith("no matches (")
+
+    def test_max_results_cap_is_announced(self, ws):
+        registry = self._populated(ws)
+        (ws / "documents" / "many.txt").write_text("word\n" * 50)
+        r = _call(registry, "file_search", pattern="word", max_results=3)
+        lines = r.content.splitlines()
+        assert len(lines) == 4 and lines[-1].startswith("[stopped at 3 matches")
+
+    def test_symlink_out_of_the_workspace_is_not_searched(self, ws, tmp_path):
+        secret = tmp_path / "state" / ".env"
+        secret.parent.mkdir()
+        secret.write_text("OPENROUTER_API_KEY=sk-live\n")
+        (ws / "documents").mkdir()
+        (ws / "documents" / "env-link").symlink_to(secret)
+        (ws / "state-link").symlink_to(secret.parent)
+        r = _call(_registry(ws, _FILE_TOOLS, wrap=False), "file_search", pattern="sk-live")
+        assert "sk-live" not in r.content
+
+    def test_traversal_and_missing_directory_rejected(self, ws):
+        registry = _registry(ws, _FILE_TOOLS)
+        assert _call(registry, "file_search", pattern="x", path="../").is_error
+        assert _call(registry, "file_search", pattern="x", path="nope").is_error
+
+
+class TestFileCopy:
+    def test_copies_a_file_creating_parents(self, ws):
+        (ws / "a.md").write_text("hello")
+        r = _call(_registry(ws, _FILE_TOOLS, wrap=False), "file_copy",
+                  source="a.md", destination="documents/archive/a.md")
+        assert not r.is_error and r.content == "copied a.md -> documents/archive/a.md"
+        assert (ws / "documents" / "archive" / "a.md").read_text() == "hello"
+        assert (ws / "a.md").read_text() == "hello"
+
+    def test_copies_a_directory_tree(self, ws):
+        (ws / "skills" / "word-daily" / "scripts").mkdir(parents=True)
+        (ws / "skills" / "word-daily" / "SKILL.md").write_text("name: word-daily")
+        (ws / "skills" / "word-daily" / "scripts" / "pick.py").write_text("print(1)")
+        r = _call(_registry(ws, _FILE_TOOLS), "file_copy",
+                  source="skills/word-daily", destination="skills/word-daily-ja")
+        assert not r.is_error
+        assert (ws / "skills" / "word-daily-ja" / "scripts" / "pick.py").read_text() == "print(1)"
+
+    def test_symlinks_inside_a_tree_are_dropped_not_followed(self, ws, tmp_path):
+        secret = tmp_path / ".env"
+        secret.write_text("TOKEN=1")
+        (ws / "src").mkdir()
+        (ws / "src" / "real.md").write_text("ok")
+        (ws / "src" / "link").symlink_to(secret)
+        r = _call(_registry(ws, _FILE_TOOLS), "file_copy", source="src", destination="dst")
+        assert not r.is_error
+        assert (ws / "dst" / "real.md").exists()
+        assert not (ws / "dst" / "link").exists()
+
+    def test_refuses_existing_destination(self, ws):
+        (ws / "a.md").write_text("a")
+        (ws / "b.md").write_text("b")
+        r = _call(_registry(ws, _FILE_TOOLS), "file_copy", source="a.md", destination="b.md")
+        assert r.is_error and "destination exists" in r.content
+        assert (ws / "b.md").read_text() == "b"
+
+    def test_refuses_symlink_source_traversal_and_operator_destination(self, ws, tmp_path):
+        registry = _registry(ws, _FILE_TOOLS)
+        secret = tmp_path / ".env"
+        secret.write_text("TOKEN=1")
+        (ws / "link").symlink_to(secret)
+        (ws / "a.md").write_text("a")
+        assert _call(registry, "file_copy", source="link", destination="copy.md").is_error
+        assert _call(registry, "file_copy", source="../.env", destination="copy.md").is_error
+        assert _call(registry, "file_copy", source="a.md", destination="../out.md").is_error
+        r = _call(registry, "file_copy", source="a.md", destination="extensions/a.md")
+        assert r.is_error and "operator-controlled" in r.content
+        assert not (ws / "copy.md").exists()
+
+    def test_refuses_copying_a_directory_into_itself(self, ws):
+        (ws / "d").mkdir()
+        r = _call(_registry(ws, _FILE_TOOLS), "file_copy", source="d", destination="d/inner")
+        assert r.is_error and "inside the source" in r.content
+
+
+class TestFileMove:
+    def test_renames_a_file_and_moves_a_directory(self, ws):
+        registry = _registry(ws, _FILE_TOOLS, wrap=False)
+        (ws / "draft.md").write_text("x")
+        r = _call(registry, "file_move", source="draft.md", destination="documents/final.md")
+        assert not r.is_error and r.content == "moved draft.md -> documents/final.md"
+        assert not (ws / "draft.md").exists()
+        assert (ws / "documents" / "final.md").read_text() == "x"
+        (ws / "old").mkdir()
+        (ws / "old" / "f").write_text("f")
+        assert not _call(registry, "file_move", source="old", destination="archive/old").is_error
+        assert (ws / "archive" / "old" / "f").exists()
+
+    def test_refuses_protected_source_and_directory_holding_one(self, ws):
+        (ws / "config").mkdir()
+        (ws / "config" / "jobs.json").write_text("[]")
+        registry = _registry(ws, _FILE_TOOLS)
+        r = _call(registry, "file_move", source="config/jobs.json", destination="jobs.json")
+        assert r.is_error and "protected" in r.content
+        r = _call(registry, "file_move", source="config", destination="old-config")
+        assert r.is_error and "protected" in r.content
+        assert (ws / "config" / "jobs.json").exists()
+
+    def test_refuses_existing_destination_and_workspace_root(self, ws):
+        (ws / "a").write_text("a")
+        (ws / "b").write_text("b")
+        registry = _registry(ws, _FILE_TOOLS)
+        assert _call(registry, "file_move", source="a", destination="b").is_error
+        assert _call(registry, "file_move", source=".", destination="elsewhere").is_error
+        assert (ws / "a").exists() and (ws / "b").read_text() == "b"
+
+
+class TestFileDelete:
+    def test_deletes_a_file_and_an_empty_directory(self, ws):
+        registry = _registry(ws, _FILE_TOOLS, wrap=False)
+        (ws / "tmp").mkdir()
+        (ws / "tmp" / "cmd_output_1.txt").write_text("x")
+        r = _call(registry, "file_delete", path="tmp/cmd_output_1.txt")
+        assert not r.is_error and r.content == "deleted tmp/cmd_output_1.txt"
+        assert not _call(registry, "file_delete", path="tmp").is_error
+        assert not (ws / "tmp").exists()
+
+    def test_non_empty_directory_needs_recursive(self, ws):
+        (ws / "d").mkdir()
+        (ws / "d" / "f").write_text("f")
+        registry = _registry(ws, _FILE_TOOLS)
+        r = _call(registry, "file_delete", path="d")
+        assert r.is_error and "recursive=true" in r.content
+        assert (ws / "d" / "f").exists()
+        assert not _call(registry, "file_delete", path="d", recursive=True).is_error
+        assert not (ws / "d").exists()
+
+    def test_refuses_root_protected_operator_and_missing(self, ws):
+        (ws / "config").mkdir()
+        (ws / "config" / "jobs.json").write_text("[]")
+        (ws / "extensions").mkdir()
+        (ws / "extensions" / "x.py").write_text("")
+        registry = _registry(ws, _FILE_TOOLS)
+        assert _call(registry, "file_delete", path=".", recursive=True).is_error
+        assert _call(registry, "file_delete", path="config/jobs.json").is_error
+        assert _call(registry, "file_delete", path="config", recursive=True).is_error
+        assert _call(registry, "file_delete", path="extensions/x.py").is_error
+        assert _call(registry, "file_delete", path="missing").is_error
+        assert (ws / "config" / "jobs.json").exists() and (ws / "extensions" / "x.py").exists()
+
+    def test_symlink_is_refused_and_target_untouched(self, ws, tmp_path):
+        target = tmp_path / "outside"
+        target.mkdir()
+        (target / "keep").write_text("keep")
+        (ws / "link").symlink_to(target)
+        r = _call(_registry(ws, _FILE_TOOLS), "file_delete", path="link", recursive=True)
+        assert r.is_error
+        assert (target / "keep").exists()
+
+    def test_traversal_rejected(self, ws, tmp_path):
+        (tmp_path / "outside.txt").write_text("x")
+        assert _call(_registry(ws, _FILE_TOOLS), "file_delete", path="../outside.txt").is_error
+        assert (tmp_path / "outside.txt").exists()

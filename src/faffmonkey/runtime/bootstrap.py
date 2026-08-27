@@ -89,8 +89,12 @@ def _format_skills(skills: list[tuple[str, str]]) -> str:
 _TOOL_HINTS = {
     "file_read": "read a workspace file",
     "file_list": "list workspace files and directories, no shell needed",
-    "file_write": "create or overwrite a workspace file, creating directories as needed",
+    "file_write": "create or overwrite a workspace file, creating directories as needed; mode=append adds to the end",
     "file_edit": "replace an exact string in a workspace file",
+    "file_search": "find text across workspace files, recursively; no grep or find needed",
+    "file_copy": "copy a file or directory; no cp needed",
+    "file_move": "move or rename a file or directory; no mv needed",
+    "file_delete": "delete a file or directory; no rm needed",
     "web_search": "search the web",
     "shell_exec": "run a shell command in the workspace",
     "skill_invoke": "run a skill command from its SKILL.md; never run skill scripts through shell_exec",

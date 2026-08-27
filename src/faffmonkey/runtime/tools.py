@@ -11,6 +11,7 @@ import os
 import os.path
 import re
 import shlex
+import shutil
 import signal
 import socket
 import subprocess
@@ -50,6 +51,9 @@ _CHUNK_SIZE = 64 * 1024
 _MAX_MEMORY_BYTES = MAX_OUTPUT_BYTES * 2
 _MAX_FILE_READ_BYTES = 10 * 1024 * 1024
 _MAX_LIST_ENTRIES = 500
+_MAX_SEARCH_RESULTS = 100
+_MAX_SEARCH_FILES = 5000
+_MAX_SEARCH_LINE_CHARS = 200
 _MAX_FILE_READ_CONTENT_BYTES = 100 * 1024
 _APPROVAL_TTL = 300
 _GLOB_CHARS = frozenset('*?[')
@@ -333,14 +337,78 @@ TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "file_write",
-            "description": "Write a file. Paths are relative to the workspace root (no workspace/ prefix); files for the user go in documents/. Post-write lint checks syntax.",
+            "description": "Write a file, creating directories as needed. Paths are relative to the workspace root (no workspace/ prefix); files for the user go in documents/. mode=append adds to the end instead of replacing. Post-write lint checks syntax.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "Path relative to the workspace root, e.g. documents/notes.md."},
                     "content": {"type": "string", "description": "File content to write."},
+                    "mode": {"type": "string", "enum": ["overwrite", "append"], "description": "overwrite (default) replaces the file; append adds the content at the end, creating the file if missing.", "default": "overwrite"},
                 },
                 "required": ["path", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "file_search",
+            "description": "Search workspace files for a pattern, recursively. Returns path:line: text for each match, case-insensitive. Use instead of grep or find.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string", "description": "Text to find. A literal substring unless regex is true."},
+                    "path": {"type": "string", "description": "Directory to search, relative to the workspace root.", "default": "."},
+                    "glob": {"type": "string", "description": "Only search files whose name matches, e.g. *.md.", "default": ""},
+                    "regex": {"type": "boolean", "description": "Treat pattern as a regular expression.", "default": False},
+                    "max_results": {"type": "integer", "description": "Maximum matches to return.", "default": 100},
+                },
+                "required": ["pattern"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "file_copy",
+            "description": "Copy a file or directory within the workspace. The destination must not exist. Use instead of cp.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string", "description": "Path relative to the workspace root."},
+                    "destination": {"type": "string", "description": "New path relative to the workspace root; parent directories are created."},
+                },
+                "required": ["source", "destination"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "file_move",
+            "description": "Move or rename a file or directory within the workspace. The destination must not exist. Use instead of mv.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string", "description": "Path relative to the workspace root."},
+                    "destination": {"type": "string", "description": "New path relative to the workspace root; parent directories are created."},
+                },
+                "required": ["source", "destination"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "file_delete",
+            "description": "Delete a file or directory within the workspace. A non-empty directory needs recursive=true. Use instead of rm.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Path relative to the workspace root."},
+                    "recursive": {"type": "boolean", "description": "Delete a directory and everything in it.", "default": False},
+                },
+                "required": ["path"],
             },
         },
     },
@@ -477,11 +545,21 @@ def _getaddrinfo_with_timeout(hostname: str, port: int, timeout: float = DNS_TIM
     )
 
 
-def _safe_write_text(path: Path, content: str) -> None:
+def _safe_write_text(path: Path, content: str, append: bool = False) -> None:
     """Write using O_NOFOLLOW so the open itself fails if path is a symlink."""
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | (os.O_APPEND if append else os.O_TRUNC)
+    fd = os.open(str(path), flags, 0o644)
     with os.fdopen(fd, 'w') as f:
         f.write(content)
+
+
+def _ignore_symlinks(directory: str, names: list[str]) -> list[str]:
+    return [n for n in names if os.path.islink(os.path.join(directory, n))]
+
+
+def _contains_protected(relative_dir: str) -> bool:
+    prefix = os.path.normpath(relative_dir).casefold() + "/"
+    return any(p.startswith(prefix) for p in _PROTECTED_PATHS)
 
 
 def _hash_workspace_path(p: Path) -> str:
@@ -570,6 +648,10 @@ class ToolRegistry:
             "file_list": self._handle_file_list,
             "file_write": self._handle_file_write,
             "file_edit": self._handle_file_edit,
+            "file_search": self._handle_file_search,
+            "file_copy": self._handle_file_copy,
+            "file_move": self._handle_file_move,
+            "file_delete": self._handle_file_delete,
             "web_search": self._handle_web_search,
             "web_fetch": self._handle_web_fetch,
             "shell_exec": self._handle_shell_exec,
@@ -826,15 +908,40 @@ class ToolRegistry:
         content = args.get("content")
         if not isinstance(content, str):
             return ToolResult(id=call_id, content="missing or invalid 'content' argument", is_error=True)
+        mode = args.get("mode", "overwrite")
+        if mode not in ("overwrite", "append"):
+            return ToolResult(id=call_id, content="'mode' must be overwrite or append", is_error=True)
         resolved = validate_workspace_path(self._workspace, path_str)
         if resolved is None:
             return ToolResult(id=call_id, content=f"path rejected: {self._wrap_output(path_str)}", is_error=True)
+        refused = self._writable(call_id, path_str, resolved)
+        if refused is not None:
+            return refused
 
+        try:
+            resolved.parent.mkdir(parents=True, exist_ok=True)
+            _safe_write_text(resolved, content, append=mode == "append")
+        except OSError as e:
+            return ToolResult(id=call_id, content=f"write error: {self._wrap_output(str(e))}", is_error=True)
+
+        verb = "appended to" if mode == "append" else "wrote"
+        lint_error = lint_file(resolved)
+        if lint_error is not None:
+            return ToolResult(
+                id=call_id,
+                content=self._wrap_output(
+                    f"{verb} {path_str} ({len(content)} bytes). lint warning: {lint_error}"
+                ),
+            )
+        return ToolResult(id=call_id, content=f"{verb} {self._wrap_output(path_str)} ({len(content)} bytes)")
+
+    def _writable(self, call_id: str, path_str: str, resolved: Path) -> ToolResult | None:
+        """The refusals shared by every tool that creates, changes or
+        removes a workspace path. None means go ahead."""
         if (self._workspace / path_str).is_symlink():
             return ToolResult(id=call_id, content=f"path rejected: {self._wrap_output(path_str)} is a symlink", is_error=True)
 
-        workspace_resolved = self._workspace.resolve()
-        rel_resolved = str(resolved.relative_to(workspace_resolved))
+        rel_resolved = str(resolved.relative_to(self._workspace.resolve()))
         # Every doc the model has read calls the directory "workspace/", so
         # it wrote workspace/cake.md and got workspace/workspace/cake.md.
         first = rel_resolved.split("/", 1)[0].casefold()
@@ -876,22 +983,201 @@ class ToolRegistry:
                 ),
                 is_error=True,
             )
+        return None
 
-        try:
-            resolved.parent.mkdir(parents=True, exist_ok=True)
-            _safe_write_text(resolved, content)
-        except OSError as e:
-            return ToolResult(id=call_id, content=f"write error: {self._wrap_output(str(e))}", is_error=True)
-
-        lint_error = lint_file(resolved)
-        if lint_error is not None:
+    def _removable(self, call_id: str, path_str: str, resolved: Path) -> ToolResult | None:
+        """_writable plus what only removal can do: take the workspace root
+        or a directory holding a protected file with it."""
+        refused = self._writable(call_id, path_str, resolved)
+        if refused is not None:
+            return refused
+        if resolved == self._workspace.resolve():
+            return ToolResult(id=call_id, content="path rejected: the workspace root itself", is_error=True)
+        if not resolved.exists():
+            return ToolResult(id=call_id, content=f"not found: {self._wrap_output(path_str)}", is_error=True)
+        rel_resolved = str(resolved.relative_to(self._workspace.resolve()))
+        if resolved.is_dir() and _contains_protected(rel_resolved):
             return ToolResult(
                 id=call_id,
-                content=self._wrap_output(
-                    f"wrote {path_str} ({len(content)} bytes). lint warning: {lint_error}"
-                ),
+                content=f"path rejected: {self._wrap_output(path_str)} contains a protected file",
+                is_error=True,
             )
-        return ToolResult(id=call_id, content=f"wrote {self._wrap_output(path_str)} ({len(content)} bytes)")
+        return None
+
+    def _source_and_destination(self, args: dict) -> tuple[Path, Path] | ToolResult:
+        call_id = args["_call_id"]
+        for key in ("source", "destination"):
+            if not isinstance(args.get(key), str) or not args[key]:
+                return ToolResult(id=call_id, content=f"missing or invalid '{key}' argument", is_error=True)
+        src = validate_workspace_path(self._workspace, args["source"])
+        if src is None:
+            return ToolResult(id=call_id, content=f"path rejected: {self._wrap_output(args['source'])}", is_error=True)
+        if (self._workspace / args["source"]).is_symlink():
+            return ToolResult(id=call_id, content=f"path rejected: {self._wrap_output(args['source'])} is a symlink", is_error=True)
+        if not src.exists():
+            return ToolResult(id=call_id, content=f"not found: {self._wrap_output(args['source'])}", is_error=True)
+        dst = validate_workspace_path(self._workspace, args["destination"])
+        if dst is None:
+            return ToolResult(id=call_id, content=f"path rejected: {self._wrap_output(args['destination'])}", is_error=True)
+        refused = self._writable(call_id, args["destination"], dst)
+        if refused is not None:
+            return refused
+        if dst.exists():
+            return ToolResult(
+                id=call_id,
+                content=f"destination exists: {self._wrap_output(args['destination'])}. Delete it first or choose another name.",
+                is_error=True,
+            )
+        if src.is_dir() and (dst == src or src in dst.parents):
+            return ToolResult(id=call_id, content="destination is inside the source directory", is_error=True)
+        return src, dst
+
+    def _handle_file_copy(self, args: dict) -> ToolResult:
+        call_id = args["_call_id"]
+        pair = self._source_and_destination(args)
+        if isinstance(pair, ToolResult):
+            return pair
+        src, dst = pair
+        try:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            if src.is_dir():
+                # Never follow links: a link inside a copied tree could
+                # point at state/ and the copy would land in the workspace.
+                shutil.copytree(src, dst, symlinks=False, ignore=_ignore_symlinks)
+            else:
+                shutil.copyfile(src, dst)
+        except OSError as e:
+            return ToolResult(id=call_id, content=f"copy error: {self._wrap_output(str(e))}", is_error=True)
+        return ToolResult(
+            id=call_id,
+            content=f"copied {self._wrap_output(args['source'])} -> {self._wrap_output(args['destination'])}",
+        )
+
+    def _handle_file_move(self, args: dict) -> ToolResult:
+        call_id = args["_call_id"]
+        pair = self._source_and_destination(args)
+        if isinstance(pair, ToolResult):
+            return pair
+        src, dst = pair
+        refused = self._removable(call_id, args["source"], src)
+        if refused is not None:
+            return refused
+        try:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            src.rename(dst)
+        except OSError as e:
+            return ToolResult(id=call_id, content=f"move error: {self._wrap_output(str(e))}", is_error=True)
+        return ToolResult(
+            id=call_id,
+            content=f"moved {self._wrap_output(args['source'])} -> {self._wrap_output(args['destination'])}",
+        )
+
+    def _handle_file_delete(self, args: dict) -> ToolResult:
+        call_id = args["_call_id"]
+        path_str = args.get("path")
+        if not isinstance(path_str, str) or not path_str:
+            return ToolResult(id=call_id, content="missing or invalid 'path' argument", is_error=True)
+        recursive = args.get("recursive", False)
+        if not isinstance(recursive, bool):
+            return ToolResult(id=call_id, content="'recursive' must be a boolean", is_error=True)
+        resolved = validate_workspace_path(self._workspace, path_str)
+        if resolved is None:
+            return ToolResult(id=call_id, content=f"path rejected: {self._wrap_output(path_str)}", is_error=True)
+        refused = self._removable(call_id, path_str, resolved)
+        if refused is not None:
+            return refused
+        try:
+            if resolved.is_dir():
+                if not recursive and any(resolved.iterdir()):
+                    return ToolResult(
+                        id=call_id,
+                        content=f"directory not empty: {self._wrap_output(path_str)}. Pass recursive=true to delete its contents.",
+                        is_error=True,
+                    )
+                shutil.rmtree(resolved)
+            else:
+                resolved.unlink()
+        except OSError as e:
+            return ToolResult(id=call_id, content=f"delete error: {self._wrap_output(str(e))}", is_error=True)
+        return ToolResult(id=call_id, content=f"deleted {self._wrap_output(path_str)}")
+
+    def _handle_file_search(self, args: dict) -> ToolResult:
+        call_id = args["_call_id"]
+        pattern = args.get("pattern")
+        if not isinstance(pattern, str) or not pattern:
+            return ToolResult(id=call_id, content="missing or invalid 'pattern' argument", is_error=True)
+        path_str = args.get("path", ".")
+        if not isinstance(path_str, str) or not path_str:
+            return ToolResult(id=call_id, content="'path' must be a non-empty string", is_error=True)
+        glob = args.get("glob", "")
+        if not isinstance(glob, str):
+            return ToolResult(id=call_id, content="'glob' must be a string", is_error=True)
+        use_regex = args.get("regex", False)
+        if not isinstance(use_regex, bool):
+            return ToolResult(id=call_id, content="'regex' must be a boolean", is_error=True)
+        max_results = args.get("max_results", _MAX_SEARCH_RESULTS)
+        if not isinstance(max_results, int) or isinstance(max_results, bool) or max_results < 1:
+            return ToolResult(id=call_id, content="'max_results' must be a positive integer", is_error=True)
+        resolved = validate_workspace_path(self._workspace, path_str)
+        if resolved is None:
+            return ToolResult(id=call_id, content=f"path rejected: {self._wrap_output(path_str)}", is_error=True)
+        if (self._workspace / path_str).is_symlink():
+            return ToolResult(id=call_id, content=f"path rejected: {self._wrap_output(path_str)} is a symlink", is_error=True)
+        if not resolved.is_dir():
+            return ToolResult(id=call_id, content=f"not a directory: {self._wrap_output(path_str)}", is_error=True)
+
+        if use_regex:
+            try:
+                matcher = re.compile(pattern, re.IGNORECASE)
+            except re.error as e:
+                return ToolResult(id=call_id, content=f"invalid regex: {self._wrap_output(str(e))}", is_error=True)
+            matches = matcher.search
+        else:
+            needle = pattern.casefold()
+            matches = lambda line: needle in line.casefold()
+
+        root = self._workspace.resolve()
+        hits: list[str] = []
+        scanned = 0
+        capped = False
+        for dirpath, dirnames, filenames in os.walk(resolved, followlinks=False):
+            dirnames.sort()
+            for name in sorted(filenames):
+                if glob and not fnmatch.fnmatch(name, glob):
+                    continue
+                file_path = Path(dirpath) / name
+                if file_path.is_symlink():
+                    continue
+                scanned += 1
+                if scanned > _MAX_SEARCH_FILES:
+                    capped = True
+                    break
+                try:
+                    if file_path.stat().st_size > _MAX_FILE_READ_BYTES:
+                        continue
+                    raw = file_path.read_bytes()
+                except OSError:
+                    continue
+                if b"\0" in raw[:8192]:
+                    continue
+                rel = str(file_path.relative_to(root))
+                for lineno, line in enumerate(raw.decode("utf-8", errors="replace").splitlines(), 1):
+                    if matches(line):
+                        hits.append(f"{rel}:{lineno}: {line.strip()[:_MAX_SEARCH_LINE_CHARS]}")
+                        if len(hits) >= max_results:
+                            break
+                if len(hits) >= max_results:
+                    break
+            if capped or len(hits) >= max_results:
+                break
+
+        if not hits:
+            return ToolResult(id=call_id, content=f"no matches ({scanned} files searched)")
+        if len(hits) >= max_results:
+            hits.append(f"[stopped at {max_results} matches; narrow the pattern, path or glob]")
+        elif capped:
+            hits.append(f"[stopped after {_MAX_SEARCH_FILES} files; narrow the path or glob]")
+        return ToolResult(id=call_id, content=self._wrap_output("\n".join(hits)))
 
     def _handle_file_edit(self, args: dict) -> ToolResult:
         call_id = args["_call_id"]
@@ -908,26 +1194,9 @@ class ToolRegistry:
         if not resolved.exists():
             return ToolResult(id=call_id, content=f"file not found: {self._wrap_output(path_str)}", is_error=True)
 
-        if (self._workspace / path_str).is_symlink():
-            return ToolResult(id=call_id, content=f"path rejected: {self._wrap_output(path_str)} is a symlink", is_error=True)
-
-        workspace_resolved = self._workspace.resolve()
-        rel_resolved = str(resolved.relative_to(workspace_resolved))
-        if _is_operator_controlled(rel_resolved):
-            return ToolResult(
-                id=call_id,
-                content="extensions/ is operator-controlled and cannot be modified by file tools.",
-                is_error=True,
-            )
-        if _is_protected(rel_resolved):
-            return ToolResult(
-                id=call_id,
-                content=(
-                    f"protected file: {self._wrap_output(path_str)}. "
-                    f"{_protected_hint(rel_resolved)}"
-                ),
-                is_error=True,
-            )
+        refused = self._writable(call_id, path_str, resolved)
+        if refused is not None:
+            return refused
 
         for i, edit in enumerate(edits):
             if not isinstance(edit, dict):

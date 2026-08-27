@@ -132,6 +132,10 @@ DEFAULT_TOOL_PERMISSIONS: dict[str, str] = {
     "file_list": "always",
     "file_write": "always",
     "file_edit": "always",
+    "file_search": "always",
+    "file_copy": "always",
+    "file_move": "always",
+    "file_delete": "always",
     "shell_exec": "ask",
     "skill_invoke": "always",
 }

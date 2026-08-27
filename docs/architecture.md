@@ -601,7 +601,8 @@ container's egress is the real limit on exfiltration.
 
 | Tool | Default | Notes |
 |---|---|---|
-| file_read / file_list / file_write / file_edit | always | workspace-only; file_list is one directory, non-recursive, symlinks skipped; post-write lint (.py/.json/.toml/.yaml, informational) |
+| file_read / file_list / file_write / file_edit | always | workspace-only; file_list is one directory, non-recursive, symlinks skipped; file_write has mode=append; post-write lint (.py/.json/.toml/.yaml, informational) |
+| file_search / file_copy / file_move / file_delete | always | the grep/cp/mv/rm the agent would otherwise need a shell for, under the same workspace-only, symlink and protected-path guards; search is recursive, case-insensitive, capped at 100 matches and 5000 files; copy and move refuse an existing destination; delete needs recursive=true for a non-empty directory and refuses the workspace root or a directory holding a protected file |
 | web_search | always | via SearchProvider seam; errors if unconfigured |
 | web_fetch | always | 50KB cap, 30s timeout, SSRF-guarded, no redirects |
 | shell_exec | ask | 600s timeout, cwd=workspace, blocklist first |

@@ -22,6 +22,7 @@ traceback. `faff doctor` validates the whole file.
   "compaction": { "threshold": 0.8, "target_ratio": 0.2, "protect_last_n": 20, "hard_message_limit": 400 },
   "channels": { "telegram": { "enabled": true, "allowed_users": ["123456"] } },
   "tools": { "file_read": "always", "file_list": "always", "file_write": "always", "file_edit": "always",
+             "file_search": "always", "file_copy": "always", "file_move": "always", "file_delete": "always",
              "web_search": "always", "web_fetch": "always", "shell_exec": "ask",
              "skill_invoke": "always", "shell_preapproved": [] },
   "search": { "provider": "brave", "api_key_env": "BRAVE_API_KEY" },
@@ -125,6 +126,7 @@ overridden.
 | Tool | Default |
 |---|---|
 | `file_read`, `file_list`, `file_write`, `file_edit` | `always` |
+| `file_search`, `file_copy`, `file_move`, `file_delete` | `always` |
 | `web_search`, `web_fetch` | `always` |
 | `skill_invoke` | `always` |
 | `shell_exec` | `ask` |
