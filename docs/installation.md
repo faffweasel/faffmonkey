@@ -27,6 +27,22 @@ docker compose run --rm faffmonkey faff init
 docker compose run --rm faffmonkey faff setup provider
 ```
 
+To put the data root somewhere else, write `FAFF_HOME=/absolute/path`
+into a `.env` file next to `docker-compose.yml` before any of the
+above, and create the three directories under that path instead of
+`~/.faffmonkey`. Both compose and `./bin/faff` read the file. A
+relative path resolves against the checkout, which is exactly where
+data must not live.
+
+### Several agents on one machine
+
+One checkout and one data root per agent. Clone into directories with
+different names (compose names the container, image and network after
+the directory), give each checkout's `.env` its own absolute
+`FAFF_HOME`, and run every command for that agent from its own
+checkout. Nothing is shared: each container sees only its own four
+mounts, and each `./bin/faff` writes only to its own data root.
+
 `faff init` asks a short setup: timezone (detected, confirm or
 correct), the heartbeat's active hours (the window in which it may
 message you), your name, the agent's name, its role, your preferred

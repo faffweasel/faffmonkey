@@ -21,6 +21,8 @@ roadmap, and issues and pull requests may go unanswered.
 git clone https://github.com/faffweasel/faffmonkey.git
 cd faffmonkey
 mkdir -p ~/.faffmonkey/workspace ~/.faffmonkey/state ~/.faffmonkey/extensions
+# Relocating the data root? Put FAFF_HOME=/absolute/path in .env here and
+# create these three directories under it instead.
 docker compose build
 docker compose run --rm faffmonkey faff init
 docker compose run --rm faffmonkey faff setup provider
