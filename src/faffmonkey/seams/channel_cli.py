@@ -1,7 +1,28 @@
 import sys
 from datetime import datetime, timezone
 
+try:
+    import termios
+except ImportError:
+    termios = None
+
 from faffmonkey.types import InboundMessage, OutboundMessage
+
+
+def discard_typeahead() -> None:
+    """Drop anything typed while no prompt was open.
+
+    In cooked mode the tty echoes such input raw (backspace shows as ^H)
+    and hands it to the next input() as if it had been entered there, so a
+    stray "y" would answer the next approval prompt.
+    """
+    if termios is None:
+        return
+    try:
+        if sys.stdin.isatty():
+            termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+    except (termios.error, ValueError, OSError):
+        pass
 
 
 class CLIChannel:
@@ -23,6 +44,7 @@ class CLIChannel:
         return True
 
     def receive(self) -> InboundMessage | None:
+        discard_typeahead()
         try:
             text = input("you> ")
         except (EOFError, KeyboardInterrupt):

@@ -16,6 +16,7 @@ except ImportError:
 
 from faffmonkey.cli.init import run_init
 from faffmonkey.config import ConfigError, data_root
+from faffmonkey.seams.channel_cli import discard_typeahead
 from faffmonkey.wiring import WiringError
 
 # Where a channel's implementation lands once its extension is installed.
@@ -127,6 +128,7 @@ def cmd_setup(args: argparse.Namespace) -> None:
 
 
 def _cli_tool_prompt(description: str) -> bool:
+    discard_typeahead()
     try:
         answer = input(f"  Allow {description}? [y/N] ")
         return answer.strip().lower() in ("y", "yes")
@@ -191,7 +193,10 @@ def cmd_chat(args: argparse.Namespace) -> None:
     from faffmonkey import __version__
     print(f"faffmonkey v{__version__} — {runtime.config.models['main'].model}")
     print("Type /help for commands. Ctrl+C to exit.\n")
-    loop.run()
+    try:
+        loop.run()
+    except KeyboardInterrupt:
+        pass
     print("\nBye.")
 
 
