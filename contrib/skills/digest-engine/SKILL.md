@@ -86,10 +86,10 @@ When a digest cron job fires:
 1. `feed_fetch --digest NAME --json --days 7`, returns only NEW items since the last run (dedup is automatic; previously seen items are filtered and counted in `seen_filtered`).
 2. Run each query in the digest's `web_search` list with the web_search tool; `feed_fetch` only handles RSS.
 3. Combine, then filter against the digest's `filter` text. Be ruthless: the filter describes what makes the cut, everything else is dropped.
-4. Write the digest to `shared/digests/NAME-YYYY-MM-DD.md`: a heading, then one short entry per surviving item with link and a one-line reason it matters.
-5. Deliver a brief summary via the configured channel; the file has the detail.
+4. Write the digest to `shared/digests/NAME-YYYY-MM-DD.md`: a heading, then one short entry per item that made the cut, with link and a one-line reason it matters.
+5. Send the digest as the message: the heading and the entries, nothing else. No item counts, no mention of filtering, nothing about what was dropped or why, no note that the file was written. The reader wants the news, not the process.
 
-If nothing survives filtering, say nothing was worth surfacing rather than padding the digest.
+If nothing made the cut, the whole message is one line naming this digest's topic: "Nothing in <topic> today.", where <topic> is the subject of the digest being processed (its name, or what its filter is about), not any example text. Do not list what was checked, do not write a digest file, and do not answer NO_REPLY: a sentence says the run happened and found nothing, silence looks like it never ran.
 
 ## Dedup behaviour
 
