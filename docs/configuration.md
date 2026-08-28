@@ -60,7 +60,7 @@ tasks can share a slot.
 | Task | Used for |
 |---|---|
 | `conversation` | Normal turns |
-| `compaction` | Summarising the context |
+| `compaction` | Summarising the context; the request is chunked to this model's window, so a small model here still works |
 | `heartbeat` | The heartbeat gate (runs every hour, keep it cheap) |
 | `cron_default` | Cron jobs without a `model`, and heartbeat escalation |
 | `image_understanding` | Any turn that carries an image, including a cron job's `agent` turn with its own `model` override |

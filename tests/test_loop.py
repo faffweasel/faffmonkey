@@ -859,7 +859,7 @@ class TestModelSwitchSetsContextWindow:
         raw = json.loads((tmp_path / "config.json").read_text())["models"]["main"]
         assert raw["context_window"] == 1048576
 
-    def test_the_loop_compacts_against_the_new_window(self):
+    def test_the_loop_sizes_the_next_turn_from_the_new_window(self):
         config = self._config()
         provider = _make_provider("ok")
         loop = AgentLoop(
@@ -870,7 +870,7 @@ class TestModelSwitchSetsContextWindow:
         )
         with patch("faffmonkey.cli.setup_provider.detect_context_window", return_value=32768):
             loop.handle_message("/model main small:cloud")
-        assert loop._context_window == 32768
+        assert loop._turn_window() == 32768
 
 
 class TestStatusShowsContextWindow:

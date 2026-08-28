@@ -221,8 +221,18 @@ When the request (system prompt plus history) crosses the threshold
 (default 0.5 of the context window), the message count exceeds the
 hard limit (400), the user runs `/compact`, or the provider returns a
 context-length error. The system prompt counts because it can be 60%
-of the window on its own; measuring history alone let a request grow
-past the window before anything fired. Pipeline: checkpoint
+of the window on its own, and tool results count whole, as the
+provider receives them, not at the 2,000-character cut the summariser
+sees. The window is the turn model's: a cron job on another slot or a
+`/model` switch mid-session is sized from its own model.
+
+The summary request is chunked to the compaction model's window (half
+of it per request, in characters through the same ratio `count_tokens`
+uses), each chunk folded into the running summary with the re-summary
+prompt. The compaction slot is normally `cheap`, whose window can be a
+fraction of the conversation model's; a single request holding the
+whole head is refused by exactly the pairings that need summarising
+most. Pipeline: checkpoint
 (SQLite backup, abort compaction if it fails), an unconditional
 memory-flush LLM turn (write important facts to memory files before
 they are summarised away), summarise via the cheap model into

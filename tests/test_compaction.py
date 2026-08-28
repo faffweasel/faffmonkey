@@ -16,13 +16,16 @@ from faffmonkey.runtime.compaction import (
     FLUSH_SAVED,
     MAX_FLUSH_CONTENT_BYTES,
     MAX_PRESERVED_BLOB_BYTES,
+    _AGGRESSIVE_PROMPT,
     _PRESERVED_MARKER,
+    _SUMMARY_PROMPT,
     _TRUNCATED_DATA_MARKER,
     _checkpoint,
     _determine_protected_tail,
     _deterministic_truncate,
     _execute_flush_writes,
     _find_existing_summary,
+    _input_chunks,
     _serialize_messages,
     _strip_orphaned_tool_messages,
     _summarise,
@@ -113,6 +116,18 @@ class TestShouldCompact:
         session = store.get_or_create_main_session("test")
         config = CompactionConfig()
         assert not should_compact(store, session.id, config, 128000, system_tokens=0)
+
+    def test_tool_results_count_in_full_as_the_provider_receives_them(self, tmp_path):
+        """The summariser sees tool results cut to 2000 characters; the
+        request does not, so the trigger must not measure the cut version."""
+        store = _make_store(tmp_path)
+        session = store.get_or_create_main_session("test")
+        store.append_message(session.id, "tool", "x" * 10000, None, "call_1")
+        config = CompactionConfig(threshold=0.5)
+        window = 4000
+        limit = int(window * config.threshold)
+        assert count_tokens(_serialize_messages(store.get_history(session.id))) < limit
+        assert should_compact(store, session.id, config, window, system_tokens=0)
 
     def test_the_system_prompt_counts_towards_the_threshold(self, tmp_path):
         """The limit is on what the provider receives: a history under the
@@ -1374,6 +1389,86 @@ class TestCheapFallbackTier:
 
         result = _summarise(self._messages(), provider_fn, config)
         assert result is None
+
+
+class TestSummaryFitsTheCompactionModel:
+    """The compaction slot is normally the cheap model, whose window can be
+    a fraction of the conversation model's. No single summary request may
+    exceed it, whatever the size of the history being summarised."""
+
+    _WINDOW = 1000
+    _BUDGET_CHARS = int(_WINDOW * 0.5 * 3.5)
+
+    def _config(self, cheap_window: int = 100000):
+        return _make_config(models={
+            "main": ModelConfig(
+                provider="faux", model="faux-main",
+                base_url="http://localhost", api_key="",
+                context_window=self._WINDOW,
+            ),
+            "cheap": ModelConfig(
+                provider="faux", model="faux-cheap",
+                base_url="http://localhost", api_key="",
+                context_window=cheap_window,
+            ),
+        })
+
+    def _messages(self):
+        return [Message(role="user", content=f"turn {i}: " + "words " * 40) for i in range(40)]
+
+    def test_a_large_head_is_folded_in_chunks(self):
+        provider = FauxProvider([faux_response(text=f"summary {i}") for i in range(1, 30)])
+        result = _summarise(self._messages(), lambda mc: provider, self._config())
+
+        assert len(provider.calls) > 1
+        for req in provider.calls:
+            assert len(req.messages[1].content) <= self._BUDGET_CHARS
+        for previous, req in zip(provider.calls, provider.calls[1:]):
+            assert "<previous-summary>" in req.messages[0].content
+        assert provider.calls[0].messages[0].content == _SUMMARY_PROMPT
+        assert provider.calls[1].messages[0].content.startswith(
+            "<previous-summary>\nsummary 1\n"
+        )
+        assert result == f"summary {len(provider.calls)}"
+
+    def test_nothing_of_the_head_is_dropped(self):
+        provider = FauxProvider([faux_response(text="s")] * 30)
+        _summarise(self._messages(), lambda mc: provider, self._config())
+        sent = "\n".join(req.messages[1].content for req in provider.calls)
+        for i in range(40):
+            assert f"turn {i}:" in sent
+
+    def test_the_cheap_tier_is_chunked_to_its_own_window(self):
+        cheap = FauxProvider([faux_response(text=f"cheap {i}") for i in range(1, 30)])
+
+        def provider_fn(mc):
+            if mc.model == "faux-main":
+                raise RuntimeError("tier 1 down")
+            return cheap
+
+        result = _summarise(self._messages(), provider_fn, self._config(cheap_window=self._WINDOW))
+        assert len(cheap.calls) > 1
+        for req in cheap.calls:
+            assert len(req.messages[1].content) <= self._BUDGET_CHARS
+        assert cheap.calls[0].messages[0].content == _AGGRESSIVE_PROMPT
+        assert result == f"cheap {len(cheap.calls)}"
+
+    def test_an_empty_reply_mid_way_fails_the_tier(self):
+        provider = FauxProvider([faux_response(text="s1"), faux_response(text="")] + [faux_response(text="never")] * 30)
+        config = self._config()
+
+        def provider_fn(mc):
+            if mc.model == "faux-cheap":
+                raise RuntimeError("cheap down")
+            return provider
+
+        assert _summarise(self._messages(), provider_fn, config) is None
+
+    def test_a_single_oversized_line_is_split(self):
+        chunks = _input_chunks("a" * 10000, self._WINDOW)
+        assert len(chunks) > 1
+        assert all(len(c) <= self._BUDGET_CHARS for c in chunks)
+        assert "".join(chunks) == "a" * 10000
 
 
 class TestCheckpointNoCollision:

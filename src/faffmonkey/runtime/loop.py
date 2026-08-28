@@ -674,7 +674,7 @@ class AgentLoop:
         stats = compact(
             self._store, self._session_id, self.config,
             self._workspace, self.resolve_provider,
-            self._context_window,
+            self._turn_window(),
         )
         if not stats.get("aborted"):
             self.history = self._store.get_history(self._session_id)
@@ -692,13 +692,14 @@ class AgentLoop:
             self.usage_total, self._state_dir,
         )
 
-    def _sync_context_window(self) -> None:
-        """The compaction trigger sizes itself from the conversation slot's
-        window, which /model can change mid-session."""
+    def _turn_window(self) -> int:
+        """The window of the model this turn goes to. A cron job on another
+        slot, or a /model switch mid-session, is sized from its own model
+        rather than from the conversation slot's number at start-up."""
         try:
-            self._context_window = self.config.resolve_model("conversation").context_window
+            return self._resolve_turn_model(self._turn_task()).context_window
         except ConfigError:
-            pass
+            return self._context_window
 
     def _maybe_compact(self) -> None:
         """Compact if needed, and never lose a turn because it failed.
@@ -716,7 +717,7 @@ class AgentLoop:
         try:
             if should_compact(
                 self._store, self._session_id,
-                self.config.compaction, self._context_window,
+                self.config.compaction, self._turn_window(),
                 system_tokens=count_tokens(self.system_prompt or ""),
             ):
                 self._do_compact()
@@ -1208,8 +1209,6 @@ class AgentLoop:
             state_dir=None if self._config_readonly else self._state_dir,
         )
         if slash_result is not None:
-            if text.startswith("/model"):
-                self._sync_context_window()
             return slash_result
 
         self.history.append(Message(role="user", content=text, images=images or []))

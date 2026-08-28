@@ -105,12 +105,21 @@ _AGGRESSIVE_PROMPT = (
 _TRUNCATION_MARKER = "[Earlier conversation truncated for context management]"
 
 
-def _serialize_messages(messages: list[Message]) -> str:
+def _serialize_messages(
+    messages: list[Message],
+    tool_result_chars: int | None = MAX_TOOL_RESULT_CHARS,
+) -> str:
+    """Tool results are cut to tool_result_chars for the summariser, where
+    a file dump is noise; None keeps them whole, which is what the size
+    check needs because the provider receives them whole."""
     lines: list[str] = []
     for msg in messages:
         content = msg.content
-        if content and msg.role == "tool" and len(content) > MAX_TOOL_RESULT_CHARS:
-            content = content[:MAX_TOOL_RESULT_CHARS] + "..."
+        if (
+            content and msg.role == "tool"
+            and tool_result_chars is not None and len(content) > tool_result_chars
+        ):
+            content = content[:tool_result_chars] + "..."
         if content:
             lines.append(f"[{msg.role}]: {content}")
         if msg.tool_calls:
@@ -466,7 +475,8 @@ def should_compact(
     if count >= config.hard_message_limit:
         return True
     history = session_store.get_history(session_id)
-    tokens = system_tokens + count_tokens(_serialize_messages(history))
+    sent = _serialize_messages(history, tool_result_chars=None)
+    tokens = system_tokens + count_tokens(sent)
     return tokens >= int(context_window * config.threshold)
 
 
@@ -635,6 +645,71 @@ def _strip_orphaned_tool_messages(tail: list[Message]) -> list[Message]:
     return tail
 
 
+# count_tokens divides characters by 3.5; the summariser's input is sized
+# in characters from the model's window through the same ratio, using
+# half the window so the prompt, the running summary and the reply fit.
+_CHARS_PER_TOKEN = 3.5
+_SUMMARY_INPUT_FRACTION = 0.5
+
+
+def _input_chunks(serialised: str, context_window: int) -> list[str]:
+    """Split the summariser's input so every request fits its model."""
+    budget = max(int(context_window * _SUMMARY_INPUT_FRACTION * _CHARS_PER_TOKEN), 1024)
+    chunks: list[str] = []
+    current: list[str] = []
+    size = 0
+    for line in serialised.split("\n"):
+        while len(line) > budget:
+            if current:
+                chunks.append("\n".join(current))
+                current, size = [], 0
+            chunks.append(line[:budget])
+            line = line[budget:]
+        if current and size + len(line) + 1 > budget:
+            chunks.append("\n".join(current))
+            current, size = [], 0
+        current.append(line)
+        size += len(line) + 1
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
+def _summarise_with(
+    provider: Provider,
+    mc: ModelConfig,
+    serialised: str,
+    first_prompt: str,
+    existing: str | None,
+    max_tokens: int,
+    temperature: float,
+) -> str | None:
+    """One request per chunk, each folding its chunk into the summary so
+    far. The compaction slot is usually the cheap model, whose window may
+    be a fraction of the conversation model's; a single request holding
+    the whole head would be refused by exactly the setups that need it."""
+    summary = existing
+    for chunk in _input_chunks(serialised, mc.context_window):
+        prompt = (
+            _RESUMARY_TEMPLATE.format(existing_summary=summary)
+            if summary
+            else first_prompt
+        )
+        resp = provider.complete(CompletionRequest(
+            messages=[
+                Message(role="system", content=prompt),
+                Message(role="user", content=chunk),
+            ],
+            model=mc.model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ))
+        if not resp.text:
+            return None
+        summary = resp.text
+    return summary
+
+
 def _summarise(
     messages: list[Message],
     provider_fn: Callable[[ModelConfig], Provider],
@@ -643,28 +718,16 @@ def _summarise(
     serialised = _serialize_messages(messages)
     existing = _find_existing_summary(messages)
 
-    prompt = (
-        _RESUMARY_TEMPLATE.format(existing_summary=existing)
-        if existing
-        else _SUMMARY_PROMPT
-    )
-
     tier1_mc: ModelConfig | None = None
     try:
         tier1_mc = config.resolve_model("compaction")
-        provider = provider_fn(tier1_mc)
-        resp = provider.complete(CompletionRequest(
-            messages=[
-                Message(role="system", content=prompt),
-                Message(role="user", content=serialised),
-            ],
-            model=tier1_mc.model,
-            temperature=0.2,
-            max_tokens=1200,
-        ))
-        if resp.text:
+        summary = _summarise_with(
+            provider_fn(tier1_mc), tier1_mc, serialised, _SUMMARY_PROMPT,
+            existing, max_tokens=1200, temperature=0.2,
+        )
+        if summary:
             logger.info("compaction: summarised with %s", tier1_mc.model)
-            return resp.text
+            return summary
     except Exception as e:
         logger.warning("compaction tier 1 (normal) failed: %s", e)
 
@@ -678,19 +741,13 @@ def _summarise(
         if tier1_mc and cheap_mc.provider == tier1_mc.provider and cheap_mc.model == tier1_mc.model:
             logger.info("compaction: cheap model same as tier-1, skipping")
         else:
-            provider = provider_fn(cheap_mc)
-            resp = provider.complete(CompletionRequest(
-                messages=[
-                    Message(role="system", content=_AGGRESSIVE_PROMPT),
-                    Message(role="user", content=serialised),
-                ],
-                model=cheap_mc.model,
-                temperature=0.1,
-                max_tokens=600,
-            ))
-            if resp.text:
+            summary = _summarise_with(
+                provider_fn(cheap_mc), cheap_mc, serialised, _AGGRESSIVE_PROMPT,
+                None, max_tokens=600, temperature=0.1,
+            )
+            if summary:
                 logger.info("compaction: summarised with cheap fallback")
-                return resp.text
+                return summary
     except Exception as e:
         logger.warning("compaction tier 2 (cheap fallback) failed: %s", e)
 
