@@ -19,7 +19,7 @@ traceback. `faff doctor` validates the whole file.
                "cron_default": "main", "image_understanding": "vision" },
   "fallback_models": [],
   "heartbeat": { "enabled": true, "active_hours": [9, 22], "ack_max_chars": 300 },
-  "compaction": { "threshold": 0.8, "target_ratio": 0.2, "protect_last_n": 20, "hard_message_limit": 400 },
+  "compaction": { "threshold": 0.5, "target_ratio": 0.2, "protect_last_n": 20, "hard_message_limit": 400 },
   "channels": { "telegram": { "enabled": true, "allowed_users": ["123456"] } },
   "tools": { "file_read": "always", "file_list": "always", "file_write": "always", "file_edit": "always",
              "file_search": "always", "file_copy": "always", "file_move": "always", "file_delete": "always",
@@ -50,7 +50,7 @@ name it from a cron job's `model` field.
 | `module` | `""` | Dotted path to a custom `Provider` class in `extensions/` |
 | `timeout` | `120` | Request timeout, seconds |
 | `allow_insecure` | `false` | Permit `http://` to a non-local host |
-| `context_window` | `128000` | Tokens. Sets the bootstrap budget (60% of it) and the compaction threshold, so set it for small or very large models |
+| `context_window` | `128000` | Tokens. Sets the bootstrap budget (60% of it) and the compaction threshold. `faff setup provider` reads it from the provider where it can and asks otherwise; `faff doctor` warns when the conversation slot is running on the default or disagrees with what the provider reports |
 
 ### routing
 
@@ -92,7 +92,7 @@ The schedule itself is the heartbeat job's cron expression in
 
 | Field | Default | Description |
 |---|---|---|
-| `threshold` | `0.8` | Fraction of `context_window` that triggers compaction |
+| `threshold` | `0.5` | Fraction of `context_window` the whole request (system prompt plus history) may reach before compaction. An existing config that sets it keeps its value |
 | `target_ratio` | `0.2` | Target size after compaction, as a fraction |
 | `protect_last_n` | `20` | Most recent messages kept verbatim (minimum 1) |
 | `hard_message_limit` | `400` | Message count that triggers compaction regardless of tokens |
@@ -199,7 +199,15 @@ docker compose run --rm faffmonkey faff setup provider
 5. Sends a one-word test request to `{base_url}/chat/completions`.
 6. Asks whether `cheap` and `vision` should use the same model; if
    not, asks for each.
-7. Writes the `models` block.
+7. Reads each model's context window from the provider: the `/models`
+   list for OpenRouter, Venice and most OpenAI-compatible servers,
+   then Ollama's native `/api/ps` and `/api/show`. Where nothing
+   reports one it asks, showing `128000` as the default so the number
+   is a choice rather than a silent fallback. A local Ollama reports
+   the window the model was loaded with, which is the server's
+   `num_ctx` rather than the trained length; the connection test in
+   step 5 is what loads it.
+8. Writes the `models` block.
 
 ### Bundled presets
 

@@ -153,6 +153,134 @@ def _list_ollama_models() -> list[str] | None:
         return None
 
 
+DEFAULT_CONTEXT_WINDOW = 128000
+
+# Keys an OpenAI-style /models entry may carry the window under:
+# OpenRouter and Venice use context_length, vLLM max_model_len,
+# LM Studio max_context_length. Venice also nests it in model_spec.
+_CONTEXT_KEYS = ("context_length", "max_model_len", "max_context_length")
+
+
+def _positive_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def _get_json(url: str, api_key: str, body: dict | None = None) -> object:
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    data = json.dumps(body).encode() if body is not None else None
+    method = "POST" if body is not None else "GET"
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    with _no_redirect_opener.open(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+def _window_from_model_list(base_url: str, api_key: str, model: str) -> int | None:
+    data = _get_json(f"{base_url.rstrip('/')}/models", api_key)
+    if not isinstance(data, dict):
+        return None
+    for entry in data.get("data", []):
+        if not isinstance(entry, dict) or entry.get("id") != model:
+            continue
+        candidates = [entry.get(key) for key in _CONTEXT_KEYS]
+        spec = entry.get("model_spec")
+        if isinstance(spec, dict):
+            candidates.append(spec.get("availableContextTokens"))
+        for value in candidates:
+            found = _positive_int(value)
+            if found is not None:
+                return found
+    return None
+
+
+def _window_from_ollama(base_url: str, api_key: str, model: str) -> int | None:
+    """Ollama's native API sits one level above the /v1 prefix.
+
+    /api/ps reports the window a loaded model was actually started with,
+    which the server's default caps below the trained length; the
+    connection test has just loaded the main model, so that is the
+    number to prefer. /api/show reports the trained length under
+    model_info "<family>.context_length", capped by a num_ctx in the
+    Modelfile parameters when there is one.
+    """
+    root = base_url.rstrip("/")
+    if root.endswith("/v1"):
+        root = root[:-3]
+    running = _get_json(f"{root}/api/ps", api_key)
+    if isinstance(running, dict):
+        for entry in running.get("models", []):
+            if not isinstance(entry, dict):
+                continue
+            if model in (entry.get("name"), entry.get("model")):
+                found = _positive_int(entry.get("context_length"))
+                if found is not None:
+                    return found
+    shown = _get_json(f"{root}/api/show", api_key, {"model": model})
+    if not isinstance(shown, dict):
+        return None
+    info = shown.get("model_info")
+    if not isinstance(info, dict):
+        return None
+    trained = None
+    for key, value in info.items():
+        if key.endswith(".context_length"):
+            trained = _positive_int(value)
+            break
+    if trained is None:
+        return None
+    params = shown.get("parameters", "")
+    if isinstance(params, str):
+        match = re.search(r"^num_ctx\s+(\d+)", params, re.MULTILINE)
+        if match:
+            return min(trained, int(match.group(1)))
+    return trained
+
+
+def detect_context_window(base_url: str, api_key: str, model: str) -> int | None:
+    """How many tokens the provider says the model takes; None when it
+    will not say. The OpenAI-style model list is tried first, then
+    Ollama's native endpoints, so no provider-specific branching is
+    needed: a server without the endpoint answers 404 and is skipped."""
+    for probe in (_window_from_model_list, _window_from_ollama):
+        try:
+            found = probe(base_url, api_key, model)
+        except (urllib.error.URLError, OSError, TimeoutError, ValueError):
+            continue
+        if found is not None:
+            return found
+    return None
+
+
+def _resolve_context_windows(
+    base_url: str, api_key: str, models: list[str],
+) -> dict[str, int]:
+    """One window per distinct model name: read from the provider where
+    it reports one, asked for where it does not. Every slot gets an
+    explicit value; the 128000 default is only ever a shown choice,
+    never a silent fallback, because it fits neither a 1M model nor a
+    4k one and nothing downstream can tell which is in play."""
+    windows: dict[str, int] = {}
+    fallback = DEFAULT_CONTEXT_WINDOW
+    for name in dict.fromkeys(models):
+        found = detect_context_window(base_url, api_key, name)
+        if found is not None:
+            print(f"  Context window for {name}: {found} tokens (reported by the provider)")
+            windows[name] = found
+            continue
+        print(f"  The provider does not report a context window for {name}.")
+        while True:
+            answer = _read_input(f"Context window for {name}, in tokens", str(fallback))
+            if answer.isdigit() and int(answer) > 0:
+                break
+            print("  Enter a positive whole number of tokens.")
+        windows[name] = int(answer)
+        fallback = windows[name]
+    return windows
+
+
 def _validate_env_value(key: str, value: str) -> str:
     value = value.strip()
     if "=" in value:
@@ -432,29 +560,22 @@ def _update_config_models(
     cheap_model: str,
     vision_model: str,
     api_key_env: str,
+    context_windows: dict[str, int],
 ) -> None:
-    main_entry: dict = {"provider": provider_key, "model": model}
-    if base_url:
-        main_entry["base_url"] = base_url
-    if api_key_env:
-        main_entry["api_key_env"] = api_key_env
-
-    cheap_entry: dict = {"provider": provider_key, "model": cheap_model}
-    if base_url:
-        cheap_entry["base_url"] = base_url
-    if api_key_env:
-        cheap_entry["api_key_env"] = api_key_env
-
-    vision_entry: dict = {"provider": provider_key, "model": vision_model}
-    if base_url:
-        vision_entry["base_url"] = base_url
-    if api_key_env:
-        vision_entry["api_key_env"] = api_key_env
+    def entry(name: str) -> dict:
+        slot: dict = {"provider": provider_key, "model": name}
+        if base_url:
+            slot["base_url"] = base_url
+        if api_key_env:
+            slot["api_key_env"] = api_key_env
+        if name in context_windows:
+            slot["context_window"] = context_windows[name]
+        return slot
 
     merge_config(config_path, "models", {
-        "main": main_entry,
-        "cheap": cheap_entry,
-        "vision": vision_entry,
+        "main": entry(model),
+        "cheap": entry(cheap_model),
+        "vision": entry(vision_model),
     })
 
 
@@ -580,6 +701,11 @@ def run_setup_provider(state_dir: Path, provider_dir: Path | None = None) -> Non
             cheap_model = model
             vision_model = model
 
+    print()
+    context_windows = _resolve_context_windows(
+        base_url, api_key, [model, cheap_model, vision_model],
+    )
+
     config_path = state_dir / "config.json"
     _update_config_models(
         config_path,
@@ -589,6 +715,7 @@ def run_setup_provider(state_dir: Path, provider_dir: Path | None = None) -> Non
         cheap_model=cheap_model,
         vision_model=vision_model,
         api_key_env=api_key_env,
+        context_windows=context_windows,
     )
     print(f"\n  Config written to {config_path}")
     print(

@@ -31,6 +31,7 @@ from faffmonkey.runtime.compaction import (
     should_compact,
 )
 from faffmonkey.runtime.session import SessionStore
+from faffmonkey.runtime.tokens import count_tokens
 from faffmonkey.types import CompletionRequest, CompletionResponse, Message, ToolCall
 
 from tests.faux_provider import FauxProvider, faux_response
@@ -82,36 +83,55 @@ class TestShouldCompact:
         store = _make_store(tmp_path)
         session = store.get_or_create_main_session("test")
         _populate_session(store, session.id, 4)
-        config = CompactionConfig(threshold=0.8, hard_message_limit=400)
-        assert not should_compact(store, session.id, config, 128000)
+        config = CompactionConfig(threshold=0.5, hard_message_limit=400)
+        assert not should_compact(store, session.id, config, 128000, system_tokens=0)
 
     def test_exceeds_message_limit(self, tmp_path):
         store = _make_store(tmp_path)
         session = store.get_or_create_main_session("test")
         config = CompactionConfig(hard_message_limit=10)
         _populate_session(store, session.id, 10)
-        assert should_compact(store, session.id, config, 128000)
+        assert should_compact(store, session.id, config, 128000, system_tokens=0)
 
     def test_below_message_limit(self, tmp_path):
         store = _make_store(tmp_path)
         session = store.get_or_create_main_session("test")
         config = CompactionConfig(hard_message_limit=10)
         _populate_session(store, session.id, 5)
-        assert not should_compact(store, session.id, config, 128000)
+        assert not should_compact(store, session.id, config, 128000, system_tokens=0)
 
     def test_exceeds_token_threshold(self, tmp_path):
         store = _make_store(tmp_path)
         session = store.get_or_create_main_session("test")
-        config = CompactionConfig(threshold=0.8)
+        config = CompactionConfig(threshold=0.5)
         big_msg = "x" * 10000
         store.append_message(session.id, "user", big_msg)
-        assert should_compact(store, session.id, config, 100)
+        assert should_compact(store, session.id, config, 100, system_tokens=0)
 
     def test_empty_session_returns_false(self, tmp_path):
         store = _make_store(tmp_path)
         session = store.get_or_create_main_session("test")
         config = CompactionConfig()
-        assert not should_compact(store, session.id, config, 128000)
+        assert not should_compact(store, session.id, config, 128000, system_tokens=0)
+
+    def test_the_system_prompt_counts_towards_the_threshold(self, tmp_path):
+        """The limit is on what the provider receives: a history under the
+        threshold on its own compacts once the system prompt takes the
+        request over it."""
+        store = _make_store(tmp_path)
+        session = store.get_or_create_main_session("test")
+        store.append_message(session.id, "user", "x" * 350)
+        config = CompactionConfig(threshold=0.5)
+        window = 1000
+        limit = int(window * config.threshold)
+        history_tokens = count_tokens(_serialize_messages(store.get_history(session.id)))
+        assert history_tokens < limit
+        assert not should_compact(
+            store, session.id, config, window, system_tokens=limit - history_tokens - 1,
+        )
+        assert should_compact(
+            store, session.id, config, window, system_tokens=limit - history_tokens,
+        )
 
 
 class TestDetermineProtectedTail:

@@ -217,9 +217,12 @@ own reads; bootstrap does not depend on the agent invoking it.
 
 ### Compaction
 
-When token usage crosses the threshold (default 0.8 of context), the
-message count exceeds the hard limit (400), the user runs `/compact`,
-or the provider returns a context-length error. Pipeline: checkpoint
+When the request (system prompt plus history) crosses the threshold
+(default 0.5 of the context window), the message count exceeds the
+hard limit (400), the user runs `/compact`, or the provider returns a
+context-length error. The system prompt counts because it can be 60%
+of the window on its own; measuring history alone let a request grow
+past the window before anything fired. Pipeline: checkpoint
 (SQLite backup, abort compaction if it fails), an unconditional
 memory-flush LLM turn (write important facts to memory files before
 they are summarised away), summarise via the cheap model into
@@ -624,6 +627,10 @@ container's egress is the real limit on exfiltration.
 It reports cron jobs the scheduler refuses to load (`faff cron list`
 cannot tell a broken file from an empty one) and repairs a
 `schema_version` table left without a row by an interrupted first run.
+It also checks the conversation slot's `context_window` against what
+the provider reports for the model, and warns when the slot has none
+set: the 128000 default hides a 1M model and a 4k one alike, and
+before the wizard wrote the value nothing said which was in play.
 
 `faff update` snapshots, checks the database schema version (no
 migrations exist yet; the first schema change introduces them

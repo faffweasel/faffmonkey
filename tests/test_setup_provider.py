@@ -16,8 +16,40 @@ from faffmonkey.cli.setup_provider import (
     _test_connection,
     _update_config_models,
     _validate_env_value,
+    detect_context_window,
     run_setup_provider,
 )
+
+
+class _FakeResp:
+    def __init__(self, data: bytes):
+        self._data = data
+
+    def read(self) -> bytes:
+        return self._data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+
+def _fake_opener(routes: dict[str, object]) -> MagicMock:
+    """An opener answering each URL suffix in routes with that JSON body
+    and 404 for anything else, recording every URL it was asked for."""
+    opener = MagicMock()
+    opener.urls = []
+
+    def open_(req, timeout=None):
+        opener.urls.append(req.full_url)
+        for suffix, body in routes.items():
+            if req.full_url.endswith(suffix):
+                return _FakeResp(json.dumps(body).encode())
+        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+
+    opener.open.side_effect = open_
+    return opener
 
 
 @pytest.fixture
@@ -141,6 +173,179 @@ class TestLoadProviders:
 
 
 
+class TestDetectContextWindow:
+    """Shapes come from the providers' own responses, not from the parser."""
+
+    def test_openrouter_model_list(self):
+        opener = _fake_opener({"/models": {"data": [{
+            "id": "moonshotai/kimi-k3",
+            "context_length": 1048576,
+            "top_provider": {"context_length": 1048576, "max_completion_tokens": 943718},
+        }]}})
+        with patch("faffmonkey.cli.setup_provider._no_redirect_opener", opener):
+            assert detect_context_window(
+                "https://openrouter.ai/api/v1", "key", "moonshotai/kimi-k3",
+            ) == 1048576
+        assert opener.urls == ["https://openrouter.ai/api/v1/models"]
+
+    def test_venice_model_spec(self):
+        opener = _fake_opener({"/models": {"data": [{
+            "id": "qwen-3-8-27b",
+            "model_spec": {"availableContextTokens": 131072},
+        }], "object": "list", "type": "text"}})
+        with patch("faffmonkey.cli.setup_provider._no_redirect_opener", opener):
+            assert detect_context_window(
+                "https://api.venice.ai/api/v1", "key", "qwen-3-8-27b",
+            ) == 131072
+
+    def test_ollama_show_when_the_openai_list_has_no_length(self):
+        opener = _fake_opener({
+            "/v1/models": {"data": [{"id": "kimi-k3:cloud", "object": "model"}]},
+            "/api/ps": {"models": []},
+            "/api/show": {
+                "model_info": {
+                    "general.architecture": "kimi-k3",
+                    "kimi-k3.context_length": 1048576,
+                },
+                "parameters": "",
+            },
+        })
+        with patch("faffmonkey.cli.setup_provider._no_redirect_opener", opener):
+            assert detect_context_window(
+                "https://ollama.example/v1", "key", "kimi-k3:cloud",
+            ) == 1048576
+        # The native API sits above the /v1 prefix.
+        assert "https://ollama.example/api/show" in opener.urls
+
+    def test_ollama_prefers_the_window_a_loaded_model_runs_with(self):
+        opener = _fake_opener({
+            "/v1/models": {"data": [{"id": "llama3:latest"}]},
+            "/api/ps": {"models": [{
+                "name": "llama3:latest", "model": "llama3:latest",
+                "context_length": 4096,
+            }]},
+            "/api/show": {"model_info": {"llama.context_length": 131072}},
+        })
+        with patch("faffmonkey.cli.setup_provider._no_redirect_opener", opener):
+            assert detect_context_window(
+                "http://localhost:11434/v1", "", "llama3:latest",
+            ) == 4096
+
+    def test_ollama_num_ctx_caps_the_trained_length(self):
+        opener = _fake_opener({
+            "/v1/models": {"data": []},
+            "/api/ps": {"models": []},
+            "/api/show": {
+                "model_info": {"llama.context_length": 131072},
+                "parameters": "num_ctx                        8192\nstop    \"<|eot_id|>\"",
+            },
+        })
+        with patch("faffmonkey.cli.setup_provider._no_redirect_opener", opener):
+            assert detect_context_window(
+                "http://localhost:11434/v1", "", "llama3:latest",
+            ) == 8192
+
+    def test_none_when_no_endpoint_reports_it(self):
+        opener = _fake_opener({"/models": {"data": [{"id": "some-model"}]}})
+        with patch("faffmonkey.cli.setup_provider._no_redirect_opener", opener):
+            assert detect_context_window("https://api.example/v1", "key", "some-model") is None
+
+    def test_none_when_the_provider_is_down(self):
+        opener = MagicMock()
+        opener.open.side_effect = urllib.error.URLError("refused")
+        with patch("faffmonkey.cli.setup_provider._no_redirect_opener", opener):
+            assert detect_context_window("http://localhost:1/v1", "", "m") is None
+
+    def test_rejects_values_that_are_not_a_positive_count(self):
+        opener = _fake_opener({"/models": {"data": [
+            {"id": "a", "context_length": True},
+            {"id": "b", "context_length": 0},
+            {"id": "c", "context_length": "128000"},
+        ]}})
+        with patch("faffmonkey.cli.setup_provider._no_redirect_opener", opener):
+            for model in ("a", "b", "c"):
+                assert detect_context_window("https://api.example/v1", "key", model) is None
+
+
+class TestWizardWritesContextWindow:
+    """Every slot the wizard writes carries an explicit context_window."""
+
+    def _state(self, tmp_path):
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        (state_dir / "config.json").write_text(json.dumps({"timezone": "UTC"}))
+        (state_dir / ".env").write_text("")
+        return state_dir
+
+    def test_reported_window_is_written_without_asking(self, tmp_path, provider_dir, monkeypatch):
+        state_dir = self._state(tmp_path)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+        inputs = iter([
+            "2",   # OpenRouter
+            "",    # default model
+            "y",   # reuse for cheap/vision
+        ])
+        monkeypatch.setattr("builtins.input", lambda prompt: next(inputs))
+        with patch(
+            "faffmonkey.cli.setup_provider._test_connection", return_value=True
+        ), patch(
+            "faffmonkey.cli.setup_provider.detect_context_window", return_value=1048576
+        ):
+            run_setup_provider(state_dir, provider_dir=provider_dir)
+
+        models = json.loads((state_dir / "config.json").read_text())["models"]
+        for slot in ("main", "cheap", "vision"):
+            assert models[slot]["context_window"] == 1048576
+
+    def test_asks_when_the_provider_does_not_report_one(self, tmp_path, provider_dir, monkeypatch, capsys):
+        state_dir = self._state(tmp_path)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+        inputs = iter([
+            "2",       # OpenRouter
+            "",        # default model
+            "y",       # reuse for cheap/vision
+            "lots",    # not a number
+            "32000",   # context window
+        ])
+        monkeypatch.setattr("builtins.input", lambda prompt: next(inputs))
+        with patch(
+            "faffmonkey.cli.setup_provider._test_connection", return_value=True
+        ), patch(
+            "faffmonkey.cli.setup_provider.detect_context_window", return_value=None
+        ):
+            run_setup_provider(state_dir, provider_dir=provider_dir)
+
+        models = json.loads((state_dir / "config.json").read_text())["models"]
+        for slot in ("main", "cheap", "vision"):
+            assert models[slot]["context_window"] == 32000
+        assert "positive whole number" in capsys.readouterr().out
+
+    def test_each_distinct_model_gets_its_own_window(self, tmp_path, provider_dir, monkeypatch):
+        state_dir = self._state(tmp_path)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+        inputs = iter([
+            "2",           # OpenRouter
+            "big-model",   # main
+            "n",           # different cheap/vision
+            "small-model", # cheap
+            "big-model",   # vision
+        ])
+        monkeypatch.setattr("builtins.input", lambda prompt: next(inputs))
+        windows = {"big-model": 1000000, "small-model": 32000}
+        with patch(
+            "faffmonkey.cli.setup_provider._test_connection", return_value=True
+        ), patch(
+            "faffmonkey.cli.setup_provider.detect_context_window",
+            side_effect=lambda base_url, api_key, model: windows[model],
+        ):
+            run_setup_provider(state_dir, provider_dir=provider_dir)
+
+        models = json.loads((state_dir / "config.json").read_text())["models"]
+        assert models["main"]["context_window"] == 1000000
+        assert models["cheap"]["context_window"] == 32000
+        assert models["vision"]["context_window"] == 1000000
+
+
 class TestOllamaModelListing:
     def test_lists_models_when_ollama_running(self, tmp_path, provider_dir, monkeypatch):
         state_dir = tmp_path / "state"
@@ -184,6 +389,8 @@ class TestOllamaModelListing:
             "faffmonkey.cli.setup_provider._test_connection", return_value=True
         ), patch(
             "faffmonkey.cli.setup_provider.urllib.request.urlopen", side_effect=fake_urlopen
+        ), patch(
+            "faffmonkey.cli.setup_provider.detect_context_window", return_value=8192
         ):
             run_setup_provider(state_dir, provider_dir=provider_dir)
 
@@ -212,6 +419,8 @@ class TestOllamaModelListing:
             "faffmonkey.cli.setup_provider._test_connection", return_value=True
         ), patch(
             "faffmonkey.cli.setup_provider.urllib.request.urlopen", side_effect=fail_urlopen
+        ), patch(
+            "faffmonkey.cli.setup_provider.detect_context_window", return_value=8192
         ):
             run_setup_provider(state_dir, provider_dir=provider_dir)
 

@@ -167,7 +167,7 @@ class HeartbeatConfig:
 
 @dataclass
 class CompactionConfig:
-    threshold: float = 0.8
+    threshold: float = 0.5
     target_ratio: float = 0.2
     protect_last_n: int = 20
     hard_message_limit: int = 400
@@ -348,7 +348,7 @@ def _parse_daily_note(raw: dict | None) -> DailyNoteConfig:
 def _parse_compaction(raw: dict | None) -> CompactionConfig:
     if raw is None:
         return CompactionConfig()
-    threshold = raw.get("threshold", 0.8)
+    threshold = raw.get("threshold", 0.5)
     if not isinstance(threshold, (int, float)) or not (0 < threshold < 1):
         raise ConfigError("compaction threshold must be between 0 and 1 (exclusive)")
     target_ratio = raw.get("target_ratio", 0.2)

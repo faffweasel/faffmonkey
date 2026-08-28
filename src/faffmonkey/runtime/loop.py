@@ -676,11 +676,13 @@ class AgentLoop:
         if not (self._store and self._session_id and self._workspace):
             return
         from faffmonkey.runtime.compaction import should_compact
+        from faffmonkey.runtime.tokens import count_tokens
 
         try:
             if should_compact(
                 self._store, self._session_id,
                 self.config.compaction, self._context_window,
+                system_tokens=count_tokens(self.system_prompt or ""),
             ):
                 self._do_compact()
         except Exception:

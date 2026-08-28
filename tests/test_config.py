@@ -203,7 +203,7 @@ def test_custom_heartbeat(tmp_path):
 
 def test_default_compaction(config_file):
     config = load_config(config_file)
-    assert config.compaction.threshold == 0.8
+    assert config.compaction.threshold == 0.5
     assert config.compaction.target_ratio == 0.2
     assert config.compaction.protect_last_n == 20
     assert config.compaction.hard_message_limit == 400

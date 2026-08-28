@@ -456,12 +456,17 @@ def should_compact(
     session_id: str,
     config: CompactionConfig,
     context_window: int,
+    system_tokens: int,
 ) -> bool:
+    """The threshold is a fraction of the window for the whole request,
+    system prompt included: the bootstrap may take up to 60% of the
+    window on its own, so history measured alone can pass the window
+    without ever reaching the threshold."""
     count = session_store.message_count(session_id)
     if count >= config.hard_message_limit:
         return True
     history = session_store.get_history(session_id)
-    tokens = count_tokens(_serialize_messages(history))
+    tokens = system_tokens + count_tokens(_serialize_messages(history))
     return tokens >= int(context_window * config.threshold)
 
 

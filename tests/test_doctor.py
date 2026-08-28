@@ -8,8 +8,11 @@ import pytest
 
 
 from faffmonkey.cli.doctor import (
+    GREEN,
+    YELLOW,
     _check_bootstrap_files,
     _check_config,
+    _check_context_window,
     _check_database,
     _check_dirs,
     _check_extensions,
@@ -131,6 +134,101 @@ class TestCheckConfig:
         assert status == "!!"
         assert cfg is None
         assert "Run: faff setup provider" in capsys.readouterr().out
+
+
+class TestCheckContextWindow:
+    """A slot on the 128000 default is a warning, not a fact."""
+
+    def _state(self, tmp_path, main: dict):
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        (state_dir / "config.json").write_text(json.dumps({
+            "timezone": "UTC", "models": {"main": main},
+        }))
+        return state_dir
+
+    def _config(self, **fields) -> Config:
+        return _make_config(models={"main": ModelConfig(
+            provider="test", model="kimi-k3:cloud",
+            base_url="http://localhost:11434/v1", api_key="", **fields,
+        )})
+
+    _raw = {
+        "provider": "test", "model": "kimi-k3:cloud",
+        "base_url": "http://localhost:11434/v1",
+    }
+
+    def test_unset_window_names_the_default_and_what_the_provider_reports(self, tmp_path, capsys):
+        state_dir = self._state(tmp_path, self._raw)
+        with patch("faffmonkey.cli.doctor.detect_context_window", return_value=1048576):
+            status = _check_context_window(self._config(), state_dir)
+        out = capsys.readouterr().out
+        assert status == YELLOW
+        assert "128000 default" in out
+        assert "kimi-k3:cloud reports 1048576" in out
+        assert "faff setup provider" in out
+
+    def test_unset_window_warns_even_when_the_provider_is_silent(self, tmp_path, capsys):
+        state_dir = self._state(tmp_path, self._raw)
+        with patch("faffmonkey.cli.doctor.detect_context_window", return_value=None):
+            status = _check_context_window(self._config(), state_dir)
+        out = capsys.readouterr().out
+        assert status == YELLOW
+        assert "128000 default" in out
+        assert "reports" not in out
+
+    def test_configured_window_matching_the_provider_is_ok(self, tmp_path, capsys):
+        state_dir = self._state(tmp_path, {**self._raw, "context_window": 1048576})
+        with patch("faffmonkey.cli.doctor.detect_context_window", return_value=1048576):
+            status = _check_context_window(self._config(context_window=1048576), state_dir)
+        out = capsys.readouterr().out
+        assert status == GREEN
+        assert "1048576 tokens" in out
+        assert "matches the provider" in out
+
+    def test_configured_window_differing_from_the_provider_warns(self, tmp_path, capsys):
+        state_dir = self._state(tmp_path, {**self._raw, "context_window": 128000})
+        with patch("faffmonkey.cli.doctor.detect_context_window", return_value=1048576):
+            status = _check_context_window(self._config(context_window=128000), state_dir)
+        out = capsys.readouterr().out
+        assert status == YELLOW
+        assert "128000 configured" in out
+        assert "reports 1048576" in out
+
+    def test_configured_window_with_silent_provider_is_ok(self, tmp_path, capsys):
+        state_dir = self._state(tmp_path, {**self._raw, "context_window": 32000})
+        with patch("faffmonkey.cli.doctor.detect_context_window", return_value=None):
+            status = _check_context_window(self._config(context_window=32000), state_dir)
+        out = capsys.readouterr().out
+        assert status == GREEN
+        assert "32000 tokens" in out
+
+    def test_checks_the_conversation_slot_not_main(self, tmp_path, capsys):
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        (state_dir / "config.json").write_text(json.dumps({
+            "timezone": "UTC",
+            "models": {"main": self._raw, "big": {**self._raw, "context_window": 1048576}},
+            "routing": {"conversation": "big"},
+        }))
+        config = _make_config(
+            models={
+                "main": ModelConfig(
+                    provider="test", model="kimi-k3:cloud",
+                    base_url="http://localhost:11434/v1", api_key="",
+                ),
+                "big": ModelConfig(
+                    provider="test", model="kimi-k3:cloud",
+                    base_url="http://localhost:11434/v1", api_key="",
+                    context_window=1048576,
+                ),
+            },
+            routing={"conversation": "big"},
+        )
+        with patch("faffmonkey.cli.doctor.detect_context_window", return_value=1048576):
+            status = _check_context_window(config, state_dir)
+        assert status == GREEN
+        assert "big: 1048576" in capsys.readouterr().out
 
 
 class TestCheckExtensions:
@@ -469,7 +567,11 @@ class TestRunDoctor:
         }
         (state_dir / "config.json").write_text(json.dumps(config))
 
-        with patch("faffmonkey.runtime.scheduler.provider_preflight", return_value=True):
+        with patch(
+            "faffmonkey.runtime.scheduler.provider_preflight", return_value=True
+        ), patch(
+            "faffmonkey.cli.doctor.detect_context_window", return_value=None
+        ):
             exit_code = run_doctor(tmp_path)
 
         out = capsys.readouterr().out

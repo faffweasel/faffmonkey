@@ -4,7 +4,11 @@ import json
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from faffmonkey.cli.setup_provider import _safe_url
+from faffmonkey.cli.setup_provider import (
+    DEFAULT_CONTEXT_WINDOW,
+    _safe_url,
+    detect_context_window,
+)
 from faffmonkey.config import ConfigError, load_config
 from faffmonkey.runtime.scheduler import load_jobs
 from faffmonkey.runtime.tokens import count_tokens
@@ -102,6 +106,55 @@ def _check_provider(config: object) -> str:
             f"Check base_url: {_safe_url(main.base_url)}",
         )
         return RED
+
+
+def _check_context_window(config: object, state_dir: Path) -> str:
+    """The conversation slot's window against what the provider says.
+    A slot without context_window runs on the 128000 default whatever
+    the model can take, and status prints that default as if it were a
+    fact, so this is the one place the gap is visible."""
+    from faffmonkey.config import Config
+    if not isinstance(config, Config):
+        return RED
+    slot = config.routing.get("conversation", "main")
+    model = config.models.get(slot)
+    if model is None:
+        return RED
+    try:
+        raw = json.loads((state_dir / "config.json").read_text())
+        explicit = "context_window" in raw["models"][slot]
+    except (json.JSONDecodeError, OSError, KeyError, TypeError):
+        explicit = False
+    reported = detect_context_window(model.base_url, model.api_key, model.model)
+    hint = f"Run: faff setup provider, or set models.{slot}.context_window"
+    if not explicit:
+        if reported is None:
+            detail = f"{slot}: not set, running on the {DEFAULT_CONTEXT_WINDOW} default"
+        else:
+            detail = (
+                f"{slot}: not set, running on the {DEFAULT_CONTEXT_WINDOW} default;"
+                f" {model.model} reports {reported}"
+            )
+        _print_check("Context window", YELLOW, detail, hint)
+        return YELLOW
+    if reported is None:
+        _print_check(
+            "Context window", GREEN,
+            f"{slot}: {model.context_window} tokens ({model.model})",
+        )
+        return GREEN
+    if reported != model.context_window:
+        _print_check(
+            "Context window", YELLOW,
+            f"{slot}: {model.context_window} configured, {model.model} reports {reported}",
+            hint,
+        )
+        return YELLOW
+    _print_check(
+        "Context window", GREEN,
+        f"{slot}: {model.context_window} tokens ({model.model}), matches the provider",
+    )
+    return GREEN
 
 
 def _check_channels(config: object, base: Path | None = None) -> str:
@@ -482,6 +535,8 @@ def run_doctor(base: Path) -> int:
     if config is not None:
         if _check_provider(config) == RED:
             has_red = True
+        else:
+            _check_context_window(config, state_dir)
         if _check_channels(config, base=base) == RED:
             has_red = True
     else:
