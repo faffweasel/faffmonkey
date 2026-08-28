@@ -217,6 +217,17 @@ class TestDetectContextWindow:
         # The native API sits above the /v1 prefix.
         assert "https://ollama.example/api/show" in opener.urls
 
+    def test_ollama_cloud_answers_show_but_not_ps(self):
+        """ollama.com returns 401 for /api/ps; /api/show still has to be asked."""
+        opener = _fake_opener({
+            "/v1/models": {"data": [{"id": "kimi-k3", "object": "model"}]},
+            "/api/show": {"model_info": {"kimi-k3.context_length": 1048576}},
+        })
+        with patch("faffmonkey.cli.setup_provider._no_redirect_opener", opener):
+            assert detect_context_window(
+                "https://ollama.example/v1", "key", "kimi-k3:cloud",
+            ) == 1048576
+
     def test_ollama_prefers_the_window_a_loaded_model_runs_with(self):
         opener = _fake_opener({
             "/v1/models": {"data": [{"id": "llama3:latest"}]},

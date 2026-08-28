@@ -166,7 +166,8 @@ class TestSlashCommands:
 
     def test_model_switch(self):
         config = _make_config()
-        result = handle_slash_command("/model main gpt-4o", config, lambda: None)
+        with patch("faffmonkey.cli.setup_provider.detect_context_window", return_value=None):
+            result = handle_slash_command("/model main gpt-4o", config, lambda: None)
         assert result is not None
         assert "gpt-4o" in result
         assert config.models["main"].model == "gpt-4o"
@@ -806,10 +807,84 @@ class TestModelSwitchPreservesFields:
                 timeout=300,
             ),
         })
-        result = _handle_model("main newmodel", config)
+        with patch("faffmonkey.cli.setup_provider.detect_context_window", return_value=None):
+            result = _handle_model("main newmodel", config)
         assert "newmodel" in result
         assert config.models["main"].model == "newmodel"
         assert config.models["main"].timeout == 300
+
+
+class TestModelSwitchSetsContextWindow:
+    """The window belongs to the model, so a switch re-reads it; a slot
+    that kept the old value would size compaction for the wrong model."""
+
+    def _config(self):
+        return _make_config(models={
+            "main": ModelConfig(
+                provider="ollama-cloud", model="kimi-k3:cloud",
+                base_url="https://ollama.com/v1", api_key="ok",
+                context_window=1048576,
+            ),
+        })
+
+    def test_reported_window_replaces_the_old_one_and_is_saved(self, tmp_path):
+        config = self._config()
+        (tmp_path / "config.json").write_text(json.dumps({"models": {
+            "main": {"provider": "ollama-cloud", "model": "kimi-k3:cloud",
+                     "base_url": "https://ollama.com/v1",
+                     "api_key_env": "OLLAMA_API_KEY", "context_window": 1048576},
+        }}))
+        with patch(
+            "faffmonkey.cli.setup_provider.detect_context_window", return_value=32768,
+        ) as detect:
+            out = _handle_model("main small:cloud", config, tmp_path)
+        assert detect.call_args[0] == ("https://ollama.com/v1", "ok", "small:cloud")
+        assert "context window 32768" in out
+        assert config.models["main"].context_window == 32768
+        raw = json.loads((tmp_path / "config.json").read_text())["models"]["main"]
+        assert raw["context_window"] == 32768
+
+    def test_unreported_window_is_kept_and_said(self, tmp_path):
+        config = self._config()
+        (tmp_path / "config.json").write_text(json.dumps({"models": {
+            "main": {"provider": "ollama-cloud", "model": "kimi-k3:cloud",
+                     "base_url": "https://ollama.com/v1",
+                     "api_key_env": "OLLAMA_API_KEY", "context_window": 1048576},
+        }}))
+        with patch("faffmonkey.cli.setup_provider.detect_context_window", return_value=None):
+            out = _handle_model("main mystery", config, tmp_path)
+        assert "kept at 1048576" in out
+        assert "models.main.context_window" in out
+        assert config.models["main"].context_window == 1048576
+        raw = json.loads((tmp_path / "config.json").read_text())["models"]["main"]
+        assert raw["context_window"] == 1048576
+
+    def test_the_loop_compacts_against_the_new_window(self):
+        config = self._config()
+        provider = _make_provider("ok")
+        loop = AgentLoop(
+            resolve_provider=lambda m: provider,
+            config=config,
+            channel=NoopChannel(),
+            context_window=1048576,
+        )
+        with patch("faffmonkey.cli.setup_provider.detect_context_window", return_value=32768):
+            loop.handle_message("/model main small:cloud")
+        assert loop._context_window == 32768
+
+
+class TestStatusShowsContextWindow:
+    def test_window_and_threshold_are_listed(self):
+        config = _make_config(
+            models={"main": ModelConfig(
+                provider="ollama-cloud", model="kimi-k3:cloud",
+                base_url="https://ollama.com/v1", api_key="ok",
+                context_window=1048576,
+            )},
+            compaction=CompactionConfig(threshold=0.5),
+        )
+        out = _format_status(config, None, None, TokenUsage(), None)
+        assert "Context window: 1048576 tokens, compaction at 50%" in out
 
 
 class TestProviderResponseScanning:
@@ -2649,7 +2724,8 @@ class TestModelProviderSwitch:
 
     def test_switch_via_donor_slot_persists_connection(self, tmp_path):
         config = self._config()
-        out = _handle_model("main venice qwen-3-8-27b", config, self._state(tmp_path))
+        with patch("faffmonkey.cli.setup_provider.detect_context_window", return_value=None):
+            out = _handle_model("main venice qwen-3-8-27b", config, self._state(tmp_path))
         assert "on venice" in out and "saved" in out
         mc = config.models["main"]
         assert mc.provider == "venice"
@@ -2692,7 +2768,8 @@ class TestModelProviderSwitch:
                      "base_url": "https://ollama.com/v1",
                      "api_key_env": "OLLAMA_API_KEY"},
         }}))
-        out = _handle_model("main venice qwen-3-8-27b", config, tmp_path)
+        with patch("faffmonkey.cli.setup_provider.detect_context_window", return_value=None):
+            out = _handle_model("main venice qwen-3-8-27b", config, tmp_path)
         assert "on venice" in out and "saved" in out
         mc = config.models["main"]
         assert mc.provider == "venice" and mc.api_key == "vk-live"

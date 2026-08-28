@@ -140,6 +140,16 @@ def _format_status(
         count = "unknown" if message_count is None else str(message_count)
         lines.append(f"  Session: {session_id} ({count} messages)")
 
+    try:
+        window = config.resolve_model("conversation").context_window
+    except ConfigError:
+        window = None
+    if window is not None:
+        lines.append(
+            f"  Context window: {window} tokens, compaction at "
+            f"{int(config.compaction.threshold * 100)}%"
+        )
+
     lines.append(
         f"  Tokens this session: {usage.total_tokens}"
         f" ({usage.prompt_tokens} in, {usage.completion_tokens} out)"
@@ -257,17 +267,32 @@ def _handle_model(args: str, config: Config, state_dir: Path | None = None) -> s
                 "base_url": preset["base_url"], "_api_key_env": api_key_env,
             }
 
+    # The window belongs to the model, not the slot: a switch that kept
+    # the old value would size compaction for the wrong model.
+    from faffmonkey.cli.setup_provider import detect_context_window
+    new_mc = config.models[slot]
+    window = detect_context_window(new_mc.base_url, new_mc.api_key, new_model)
+    if window is not None:
+        config.models[slot] = dataclasses.replace(new_mc, context_window=window)
+        window_note = f"context window {window} tokens (reported by the provider)"
+    else:
+        window_note = (
+            f"context window kept at {new_mc.context_window} tokens; the provider "
+            f"does not report one for {new_model}, so set "
+            f"models.{slot}.context_window in config.json if that is wrong"
+        )
+
     # Persist, or the switch reverts on restart with nothing to say so.
     # Slots stay global on purpose, so a cron job labelled "main" follows
     # the main model, which is the point of having slots.
     if state_dir is None:
         return (
-            f"Switched {slot}: {old_model} -> {new_model}\n"
+            f"Switched {slot}: {old_model} -> {new_model}, {window_note}\n"
             f"(this session only; no state directory to persist to)"
         )
     switched = (
         f"Switched {slot}: {old_model} on {old_provider} -> "
-        f"{new_model} on {config.models[slot].provider}"
+        f"{new_model} on {config.models[slot].provider}, {window_note}"
     )
     config_path = state_dir / "config.json"
     try:
@@ -275,6 +300,8 @@ def _handle_model(args: str, config: Config, state_dir: Path | None = None) -> s
         models_raw = raw.setdefault("models", {})
         entry = models_raw.setdefault(slot, {})
         entry["model"] = new_model
+        if window is not None:
+            entry["context_window"] = window
         if raw_extra:
             entry["provider"] = config.models[slot].provider
             entry["base_url"] = raw_extra["base_url"]
@@ -664,6 +691,14 @@ class AgentLoop:
             self.config, self._session_id, message_count,
             self.usage_total, self._state_dir,
         )
+
+    def _sync_context_window(self) -> None:
+        """The compaction trigger sizes itself from the conversation slot's
+        window, which /model can change mid-session."""
+        try:
+            self._context_window = self.config.resolve_model("conversation").context_window
+        except ConfigError:
+            pass
 
     def _maybe_compact(self) -> None:
         """Compact if needed, and never lose a turn because it failed.
@@ -1173,6 +1208,8 @@ class AgentLoop:
             state_dir=None if self._config_readonly else self._state_dir,
         )
         if slash_result is not None:
+            if text.startswith("/model"):
+                self._sync_context_window()
             return slash_result
 
         self.history.append(Message(role="user", content=text, images=images or []))

@@ -209,7 +209,11 @@ def _window_from_ollama(base_url: str, api_key: str, model: str) -> int | None:
     root = base_url.rstrip("/")
     if root.endswith("/v1"):
         root = root[:-3]
-    running = _get_json(f"{root}/api/ps", api_key)
+    # Ollama Cloud has no /api/ps; a failure here must not cost the show.
+    try:
+        running = _get_json(f"{root}/api/ps", api_key)
+    except (urllib.error.URLError, OSError, TimeoutError, ValueError):
+        running = None
     if isinstance(running, dict):
         for entry in running.get("models", []):
             if not isinstance(entry, dict):

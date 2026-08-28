@@ -274,6 +274,12 @@ accepted for `localhost`, `127.0.0.1`, `::1` and
 
 `/model` in any session shows the slots and routing. `/model <slot>
 <model>` changes the model name within that slot's existing provider
-and base URL, in memory only: it lasts until the process restarts and
-never writes to `config.json`. New slots and provider changes are
-edits to the file.
+and base URL; `/model <slot> <provider> <model>` moves the slot to
+another provider, taking connection details from a slot already on it
+or from the contrib preset (the preset's API key env var must already
+be in the environment). Either form asks the provider for the new
+model's context window the same way setup does and writes the whole
+change to `config.json`, so it survives a restart; when the provider
+does not report a window the old value is kept and the reply says so.
+`/status` shows the window in play and the compaction threshold. New
+slots are edits to the file.
