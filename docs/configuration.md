@@ -20,6 +20,7 @@ traceback. `faff doctor` validates the whole file.
   "fallback_models": [],
   "heartbeat": { "enabled": true, "active_hours": [9, 22], "ack_max_chars": 300 },
   "compaction": { "threshold": 0.5, "target_ratio": 0.2, "protect_last_n": 20, "hard_message_limit": 400 },
+  "daily_note": { "every_turns": 10, "every_minutes": 60 },
   "channels": { "telegram": { "enabled": true, "allowed_users": ["123456"] } },
   "tools": { "file_read": "always", "file_list": "always", "file_write": "always", "file_edit": "always",
              "file_search": "always", "file_copy": "always", "file_move": "always", "file_delete": "always",
@@ -70,11 +71,15 @@ tasks can share a slot.
 Array of slot-shaped objects tried in order when the primary fails.
 Applies to every request, whichever route chose the primary.
 
-Per request: the primary gets up to 3 attempts with backoff (1s, 2s,
-4s, capped at 30s; a `Retry-After` header overrides). Rate limits,
-5xx and timeouts retry; auth errors (401/403) skip straight to the
-fallbacks. Each fallback gets the same 3 attempts. When everything is
-exhausted the request fails.
+Per request: the primary gets up to 3 attempts, waiting 1s then 2s
+between them (a `Retry-After` header overrides, capped at 30s). Rate
+limits (429), server errors (500, 502, 503), timeouts and connection
+errors retry. Auth errors (401/403) and a refused connection skip
+straight to the fallbacks without retrying. Any other HTTP error (a 404
+for an unknown model, a 400 the provider rejects) fails the request at
+once, with no fallback: it would fail the same way anywhere. Each
+fallback gets the same 3 attempts. When everything is exhausted the
+request fails.
 
 ### heartbeat
 
@@ -97,13 +102,23 @@ The schedule itself is the heartbeat job's cron expression in
 | `protect_last_n` | `20` | Most recent messages kept verbatim (minimum 1) |
 | `hard_message_limit` | `400` | Message count that triggers compaction regardless of tokens |
 
+### daily_note
+
+| Field | Default | Description |
+|---|---|---|
+| `every_turns` | `10` | User turns since the last note before the loop asks the compaction-routed model for a daily-log entry |
+| `every_minutes` | `60` | Minutes since the last note before it asks anyway; whichever comes first |
+
+Both are positive integers. Nothing fires while nobody is talking; see
+the Daily note section of [architecture.md](architecture.md).
+
 ### channels
 
 Map of channel name to:
 
 | Field | Default | Description |
 |---|---|---|
-| `enabled` | required | |
+| `enabled` | `false` | Must be a JSON boolean; the string `"false"` is an error, not a disabled channel |
 | `allowed_users` | `[]` | Sender ids that get replies. Empty means nobody |
 | `group_policy` | `"mention"` | `mention`, `open` or `dm_only`; honoured by Discord |
 | `module` | `""` | Only for custom channels; `telegram` and `discord` resolve by name |
@@ -166,11 +181,15 @@ root per agent, each checkout's `.env` naming its own `FAFF_HOME`.
 
 ## state/.env
 
-Secrets only, loaded as environment variables before anything else
-reads config. Env var names must match
+Secrets only. The runtime reads keys from its environment, never from
+the file; it is compose that turns the file into the container's
+environment (see below). Env var names must match
 `[A-Z][A-Z0-9_]*_(API_KEY|TOKEN|SECRET)`: `OPENROUTER_API_KEY`,
 `TELEGRAM_BOT_TOKEN`, `BRAVE_API_KEY`. A configured `api_key_env` that
-is not set at startup is a config error, not a runtime surprise.
+is not set at startup is a config error, not a runtime surprise. A
+`faff` command run on the host outside compose does not see the file
+either; the setup wizards export what they write for their own run,
+and `faff skill install` reads it to check a skill's required vars.
 
 `state/.env` is separate from the `.env` next to `docker-compose.yml`,
 which only holds `FAFF_UID`, `FAFF_GID` and `FAFF_HOME`.
@@ -192,8 +211,10 @@ docker compose run --rm faffmonkey faff setup provider
 2. For a preset, fills in the base URL. For custom, asks for the base
    URL and the API key env var name (pasting the key itself here is
    caught and asked again).
-3. Asks for the API key (hidden input) and writes it to `state/.env`.
-   Skipped for keyless presets such as local Ollama.
+3. Asks for the API key (hidden input) unless the env var is already
+   set. Skipped for keyless presets such as local Ollama. The key is
+   written to `state/.env` only after the connection test in step 5
+   passes.
 4. Asks for the model. For local Ollama it lists what
    `localhost:11434` has.
 5. Sends a one-word test request to `{base_url}/chat/completions`.

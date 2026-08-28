@@ -173,7 +173,8 @@ override per job. On
 rate-limit, timeout, or connection errors the provider layer retries
 with exponential backoff (honouring retry_after) then walks
 `fallback_models`; auth errors skip retry and fall through
-immediately. Local endpoints get a preflight probe (cached 5 minutes) before cron and
+immediately. Local endpoints get a preflight probe (a reachable answer
+is cached 5 minutes, a failed one 1 minute) before cron and
 heartbeat runs. It is not there to save tokens: a dead local endpoint
 costs nothing to call, it simply fails. It is there so an outage is
 recorded as an outage. Without it every job against a stopped Ollama
@@ -190,8 +191,9 @@ mode, so `"cron_default": "cheap"` covers every job without a `model`.
 ### Bootstrap (system prompt assembly)
 
 `runtime/bootstrap.py` assembles, in order: SOUL.md, IDENTITY.md,
-USER.md, AGENTS.md, tool summary, skill catalog (names and
-descriptions only), instruction-source policy, current time and
+USER.md, AGENTS.md, tool summary, voice note (when a transcriber or
+synthesiser is configured), skill catalog (names and descriptions
+only), instruction-source policy, current time and
 location, MEMORY.md, LEARNINGS.md, today and yesterday's daily logs
 (memory/daily/YYYY-MM-DD.md),
 pending carry-over items, and the preconscious buffer. Cron and
@@ -629,7 +631,8 @@ container's egress is the real limit on exfiltration.
   config, tool permissions and shell_preapproved. Validation lives in `config.py`
   and is strict: bad api_key_env naming, insecure base_urls, wrong
   types, and security-typo'd keys are ConfigErrors.
-- **state/.env**: secrets only, loaded as environment variables.
+- **state/.env**: secrets only. Compose injects it as the container's
+  environment; the runtime reads env vars and never the file.
 - **state/commands.json**: the command seam (see Skills).
 - **workspace/config/jobs.json**: cron jobs (see Cron).
 
@@ -681,7 +684,8 @@ registers them as the bot's command menu at startup, replacing
 whatever a reused bot had before, and strips the `@botname` suffix
 groups append.
 
-`/status` reports routing (task to model and slot), the session id and
+`/status` reports routing (task to model and slot), the conversation
+slot's context window and the compaction threshold, the session id and
 its message count, token usage accumulated by the loop this process,
 and a one-line cron health summary (runs in the last 24h and any
 failures). It reads cron logs through `scheduler.recent_cron_runs`, the

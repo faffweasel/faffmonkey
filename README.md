@@ -6,7 +6,7 @@ A minimal, self-hosted personal AI agent. One agent, stdlib-only
 Python core, Docker-required deployment. Talks to you on Telegram 
 or Discord (or the terminal), remembers across sessions, runs cron 
 jobs and an hourly heartbeat, and is extended through typed seams: 
-channels, LLM providers (any OpenAI-compatibleAPI), web search, 
+channels, LLM providers (any OpenAI-compatible API), web search, 
 and voice. Runs with zero optional config out of the box.
 
 ## Status

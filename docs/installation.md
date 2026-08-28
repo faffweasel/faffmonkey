@@ -134,7 +134,8 @@ docker compose run --rm faffmonkey faff doctor
 
 `faff doctor` checks: directory structure, config validity, provider
 configuration (local endpoints are contacted, remote hosts are only
-validated, not called), channel module loading, extension integrity,
+validated, not called), the conversation model's context window against
+what the provider reports, channel module loading, extension integrity,
 `state/commands.json` validity, heartbeat config and job, bootstrap
 files (SOUL.md, IDENTITY.md, USER.md, AGENTS.md), skills, database
 schema version, cron jobs the scheduler would reject, and timezone. It
@@ -199,7 +200,7 @@ extensions/             Extension modules (0700)
 | `workspace/HEARTBEAT.md` | template | What the heartbeat watches for |
 | `workspace/skills/*` | template | Built-in skills |
 | `workspace/MEMORY.md` | template | Index skeleton (key facts, projects, people, lessons); the memory question's answer goes under key facts |
-| `workspace/config/jobs.json` | generated | `[]`; the first channel wizard adds the heartbeat, morning and evening jobs |
+| `workspace/config/jobs.json` | generated | `[]`; the first channel wizard adds the heartbeat, morning, evening and preconscious-decay jobs |
 | `state/config.json` | generated | Defaults with your timezone and active hours |
 | `state/.env` | generated | API key template (0600) |
 | `state/commands.json` | generated | `{}`, the command seam between skills |

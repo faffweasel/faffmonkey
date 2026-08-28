@@ -87,10 +87,10 @@ startup.
 | Command | Effect |
 |---|---|
 | `/help` | List these |
-| `/status` | Routing, session id and message count, token usage this process, cron health (runs in the last 24h, failures) |
+| `/status` | Routing, the conversation model's context window and compaction threshold, session id and message count, token usage this process, cron health (runs in the last 24h, failures) |
 | `/new` | Save memory, then start a new session |
 | `/clear` | New session without the memory flush |
-| `/model` | Show slots and routing; `/model <slot> <model>` switches the model, `/model <slot> <provider> <model>` also switches provider (live, persisted to `state/config.json`; the provider's API key must already be in the environment, otherwise it says so and changes nothing) |
+| `/model` | Show slots and routing; `/model <slot> <model>` switches the model, `/model <slot> <provider> <model>` also switches provider (live, persisted to `state/config.json`; the provider's API key must already be in the environment, otherwise it says so and changes nothing). Either form asks the provider for the new model's context window and says what it found, or that it kept the old value |
 | `/compact` | Compact the context now |
 | `/skill <name> [action] [args]` | Read a SKILL.md, or run an action directly |
 | `/cron` | List cron jobs with status and next fire time; `/cron history <job-id>` shows recent runs. No model call, so it works even when the model is what you are debugging |
@@ -111,7 +111,7 @@ without a restart.
 
 | Field | Required | Notes |
 |---|---|---|
-| `id` | yes | Lowercase, hyphens |
+| `id` | yes | Letters, digits, `.`, `_` and `-`, starting with a letter or digit, up to 63 characters |
 | `schedule` or `at` | one of | 5-field cron in your timezone, or a one-shot `YYYY-MM-DD HH:MM` that deletes itself after a successful run |
 | `prompt` or `skill` | one of | `skill` only with `session: "none"` |
 | `session` | no | `agent` (default, tools, most expensive), `isolated` (fresh context, no tools), `main` (in the live conversation, no tools), `none` (runs the skill's `run.py`, no model) |
@@ -121,15 +121,16 @@ without a restart.
 | `rotate_session` | no | `main` only; start a fresh session after the run |
 | `context` | no | `"heartbeat"` for the heartbeat job |
 
-The first channel wizard creates three jobs, the day's skeleton:
+The first channel wizard creates four jobs, the day's skeleton:
 
 | Job | When | What |
 |---|---|---|
 | `heartbeat` | hourly | Checks `HEARTBEAT.md`, speaks only if there is something to say (below) |
 | `morning` | 07:05 | Runs the morning-routine skill: carry-over, preconscious buffer, overnight skill output, a greeting |
 | `evening` | 22:00 | Reviews the day inside the live conversation, then the memory flush writes `MEMORY.md`, today's daily log and person/project files, and the session starts fresh |
+| `preconscious-decay` | 06:01 | Runs the preconscious skill's decay script with no model call, so the top-of-mind buffer fades as designed; delivers nothing |
 
-All three deliver to `last`. Edit or remove them like any other job;
+The three that speak deliver to `last`. Edit or remove them like any other job;
 the wizard never recreates one that exists, and never touches one you
 wrote with the same id.
 
@@ -140,7 +141,8 @@ edit the file. `faff doctor` reports jobs the scheduler would refuse.
 
 Behaviour worth knowing:
 
-- Output that is exactly `NO_REPLY` is never delivered.
+- Output that is `NO_REPLY` and nothing else (quotes, backticks and
+  trailing punctuation tolerated) is never delivered.
 - Top-of-hour jobs get a 0-5 minute stagger; schedule at minute 1 to
   avoid it.
 - After a failure a job backs off (30s doubling to 60m) and a one-shot
@@ -155,8 +157,8 @@ Behaviour worth knowing:
 ## Heartbeat
 
 The heartbeat is one cron job (`id: heartbeat`, hourly, `context:
-"heartbeat"`) that the first channel wizard creates alongside `morning`
-and `evening`. It is a check, not a ping: every hour it reads
+"heartbeat"`) that the first channel wizard creates alongside `morning`,
+`evening` and `preconscious-decay`. It is a check, not a ping: every hour it reads
 `workspace/HEARTBEAT.md` and only messages you when there is something
 to say.
 

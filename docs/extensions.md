@@ -58,9 +58,10 @@ docker compose build
 3. Writes `TELEGRAM_BOT_TOKEN` to `state/.env`.
 4. Asks for your Telegram user id (from @userinfobot) and writes the
    channel config with you as the only allowed user.
-5. Adds the `heartbeat`, `morning` and `evening` jobs to
-   `workspace/config/jobs.json`, whichever are missing, delivering to
-   `last` (the channel you most recently spoke on).
+5. Adds the `heartbeat`, `morning`, `evening` and `preconscious-decay`
+   jobs to `workspace/config/jobs.json`, whichever are missing, the
+   speaking ones delivering to `last` (the channel you most recently
+   spoke on).
 
 At startup the channel registers the slash commands as the bot's
 command menu, replacing whatever a reused bot token had before. The
@@ -80,8 +81,8 @@ docker compose build
 3. Writes `DISCORD_BOT_TOKEN` to `state/.env`.
 4. Asks for your Discord user id and writes the channel config with
    `group_policy: "mention"`.
-5. Adds the `heartbeat`, `morning` and `evening` jobs, whichever are
-   missing, delivering to `last`.
+5. Adds the `heartbeat`, `morning`, `evening` and `preconscious-decay`
+   jobs, whichever are missing, the speaking ones delivering to `last`.
 6. Prints the OAuth2 URL to invite the bot to a server.
 
 `group_policy` controls guild channels: `mention` answers only when
