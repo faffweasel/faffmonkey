@@ -21,7 +21,7 @@ from faffmonkey.config import Config, ConfigError, ModelConfig
 from faffmonkey.runtime.ingest import scan_patterns, strip_invisible
 from faffmonkey.runtime.retry import run_with_timeout
 from faffmonkey.runtime.session import MAIN_SESSION_KEY
-from faffmonkey.runtime.trust import load_trust_store
+from faffmonkey.runtime.trust import load_trust_store, read_and_check_trust
 from faffmonkey.seams.channel import Channel
 from faffmonkey.seams.search_provider import SearchProvider
 from faffmonkey.types import CompletionRequest, CompletionResponse, Message, OutboundMessage, TokenUsage
@@ -1051,8 +1051,17 @@ def _run_heartbeat(
         f" ({'; '.join(triggers.get('triggers', []))})" if has_attention else "",
     )
 
-    heartbeat_path = workspace / "HEARTBEAT.md"
-    heartbeat_content = heartbeat_path.read_text().strip() if heartbeat_path.exists() else ""
+    # The same symlink and case check the bootstrap applies to every
+    # always-trusted file. A test asserted it for HEARTBEAT.md against a
+    # bootstrap mode nothing called, while this path read the file bare.
+    heartbeat_read = read_and_check_trust("HEARTBEAT.md", workspace, {})
+    if heartbeat_read is None:
+        heartbeat_content = ""
+    elif not heartbeat_read.trusted:
+        logger.warning("HEARTBEAT.md failed trust check (symlink or case mismatch), ignoring")
+        heartbeat_content = ""
+    else:
+        heartbeat_content = heartbeat_read.content.strip()
 
     if has_attention:
         trigger_context = "\n".join(triggers.get("triggers", []))

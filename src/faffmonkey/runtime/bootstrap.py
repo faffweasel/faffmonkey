@@ -419,12 +419,7 @@ def load_bootstrap(
             if content:
                 sections.append(content)
 
-    if mode == "heartbeat":
-        _add_file(workspace / "HEARTBEAT.md")
-        sections.append(_format_time(config.timezone))
-        _add_untrusted(workspace / "MEMORY.md")
-
-    elif mode == "cron":
+    if mode == "cron":
         _add_file(workspace / "SOUL.md", warn_missing=True)
         _add_file(workspace / "IDENTITY.md")
         _add_file(workspace / "USER.md")

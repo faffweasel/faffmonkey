@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -437,6 +438,39 @@ class TestHeartbeatContext:
         with patch("faffmonkey.runtime.scheduler.provider_preflight", return_value=True):
             result = scheduler.run_job(job)
         assert result.status == "success"
+
+
+class TestHeartbeatFileTrust:
+    """HEARTBEAT.md is always-trusted, so the symlink rejection the bootstrap
+    applies to SOUL.md and friends must hold on the path that actually reads
+    it every hour. It was only ever tested against a bootstrap mode nothing
+    called."""
+
+    def test_symlinked_heartbeat_is_ignored(self, tmp_path, caplog):
+        config = _make_config()
+        provider = MagicMock()
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        target = workspace / "other.md"
+        target.write_text("SYMLINKED_HEARTBEAT")
+        (workspace / "HEARTBEAT.md").symlink_to(target)
+        job = CronJob(
+            id="hb", schedule="*/30 * * * *", context="heartbeat",
+            deliver_mode="none",
+        )
+
+        with (
+            patch("faffmonkey.runtime.skills.invoke", return_value=("ok", [], False)),
+            caplog.at_level(logging.WARNING),
+        ):
+            text, usage, skip = _run_heartbeat(
+                job, config, lambda m: provider, workspace, tmp_path,
+                now=datetime(2026, 5, 14, 10, 0, tzinfo=timezone.utc),
+            )
+
+        assert skip == "empty-heartbeat-file"
+        provider.complete.assert_not_called()
+        assert any("HEARTBEAT.md failed trust check" in r.message for r in caplog.records)
 
 
 class TestHeartbeatConfigIsHonoured:

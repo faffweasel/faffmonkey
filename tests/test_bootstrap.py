@@ -375,36 +375,6 @@ class TestLoadBootstrapFullMode:
         assert isinstance(result.file_tokens, dict)
 
 
-class TestLoadBootstrapHeartbeatMode:
-    def test_heartbeat_loads_only_heartbeat_and_memory(self, tmp_path):
-        workspace = tmp_path / "workspace"
-        _make_workspace(tmp_path, {
-            "HEARTBEAT.md": "HEARTBEAT_CONTENT",
-            "MEMORY.md": "MEMORY_CONTENT",
-            "SOUL.md": "SOUL_CONTENT",
-            "AGENTS.md": "AGENTS_CONTENT",
-        })
-        config = _make_config()
-        with patch("faffmonkey.runtime.bootstrap._find_template_dir", return_value=None):
-            result = load_bootstrap(workspace, config, mode="heartbeat")
-        assert "HEARTBEAT_CONTENT" in result.text
-        assert "MEMORY_CONTENT" in result.text
-        assert "SOUL_CONTENT" not in result.text
-        assert "AGENTS_CONTENT" not in result.text
-        assert "Current local time:" in result.text
-
-    def test_heartbeat_no_tools_or_skills(self, tmp_path):
-        workspace = tmp_path / "workspace"
-        _make_workspace(tmp_path, {
-            "skills/weather/SKILL.md": "---\nname: weather\n---\n",
-        })
-        config = _make_config()
-        with patch("faffmonkey.runtime.bootstrap._find_template_dir", return_value=None):
-            result = load_bootstrap(workspace, config, mode="heartbeat")
-        assert "Tools:" not in result.text
-        assert "Available skills:" not in result.text
-
-
 class TestLoadBootstrapCronMode:
     def test_cron_loads_correct_subset(self, tmp_path):
         workspace = tmp_path / "workspace"
@@ -618,15 +588,6 @@ class TestBootstrapPreconsciousInjection:
             result = load_bootstrap(workspace, config, mode="cron")
         assert "buffer item" not in result.text
 
-    def test_heartbeat_mode_no_preconscious(self, tmp_path):
-        workspace = tmp_path / "workspace"
-        _make_workspace(tmp_path, {"HEARTBEAT.md": "heartbeat"})
-        self._write_buffer(workspace, [{"description": "buffer item", "c": 4, "i": 4}])
-        config = _make_config()
-        with patch("faffmonkey.runtime.bootstrap._find_template_dir", return_value=None):
-            result = load_bootstrap(workspace, config, mode="heartbeat")
-        assert "buffer item" not in result.text
-
     def test_preconscious_wrapped(self, tmp_path):
         import re
         workspace = tmp_path / "workspace"
@@ -675,20 +636,6 @@ class TestBootstrapCarryOverInjection:
             load_bootstrap(workspace, config, mode="full")
         updated = json.loads((queue_dir / "queue.json").read_text())
         assert updated[0]["status"] == "pending"
-
-    def test_heartbeat_mode_no_carry_over(self, tmp_path):
-        workspace = tmp_path / "workspace"
-        _make_workspace(tmp_path, {"HEARTBEAT.md": "heartbeat"})
-        queue_dir = workspace / "skills-data" / "carry-over"
-        queue_dir.mkdir(parents=True)
-        queue = [
-            {"message": "should not appear", "timestamp": "2026-05-10T12:00:00+00:00", "status": "pending"},
-        ]
-        (queue_dir / "queue.json").write_text(json.dumps(queue))
-        config = _make_config()
-        with patch("faffmonkey.runtime.bootstrap._find_template_dir", return_value=None):
-            result = load_bootstrap(workspace, config, mode="heartbeat")
-        assert "Carry-over" not in result.text
 
     def test_cron_mode_no_carry_over(self, tmp_path):
         workspace = tmp_path / "workspace"
@@ -867,21 +814,6 @@ class TestBootstrapWithNonce:
         close_after = result.text.index(f'</untrusted-{nonce}>', log_pos)
         assert open_before < log_pos < close_after
 
-    def test_heartbeat_memory_wrapped(self, tmp_path):
-        workspace = tmp_path / "workspace"
-        _make_workspace(tmp_path, {
-            "HEARTBEAT.md": "HEARTBEAT_CONTENT",
-            "MEMORY.md": "MEMORY_CONTENT",
-        })
-        config = _make_config()
-        with patch("faffmonkey.runtime.bootstrap._find_template_dir", return_value=None):
-            result = load_bootstrap(workspace, config, mode="heartbeat", wrap=True)
-        assert "HEARTBEAT_CONTENT" in result.text
-        first_wrap = result.text.index('<untrusted nonce="')
-        assert "HEARTBEAT_CONTENT" in result.text[:first_wrap]
-        assert "MEMORY_CONTENT" in result.text
-        assert '<untrusted nonce="' in result.text
-
     def test_cron_memory_wrapped(self, tmp_path):
         workspace = tmp_path / "workspace"
         _make_workspace(tmp_path, {
@@ -921,21 +853,6 @@ class TestAlwaysTrustedSymlinkRejected:
         with patch("faffmonkey.runtime.bootstrap._find_template_dir", return_value=None):
             result = load_bootstrap(workspace, config, mode="full")
         assert "REAL_SOUL" in result.text
-
-    def test_symlink_heartbeat_rejected(self, tmp_path, caplog):
-        workspace = tmp_path / "workspace"
-        _make_workspace(tmp_path, {})
-        target = workspace / "other.md"
-        target.write_text("SYMLINKED_HEARTBEAT")
-        (workspace / "HEARTBEAT.md").symlink_to(target)
-
-        config = _make_config()
-        with (
-            patch("faffmonkey.runtime.bootstrap._find_template_dir", return_value=None),
-            caplog.at_level(logging.WARNING),
-        ):
-            result = load_bootstrap(workspace, config, mode="heartbeat")
-        assert "SYMLINKED_HEARTBEAT" not in result.text
 
 
 class TestReadFileTruncation:

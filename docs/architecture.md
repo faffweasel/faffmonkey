@@ -196,8 +196,11 @@ synthesiser is configured), skill catalog (names and descriptions
 only), instruction-source policy, current time and
 location, MEMORY.md, LEARNINGS.md, today and yesterday's daily logs
 (memory/daily/YYYY-MM-DD.md),
-pending carry-over items, and the preconscious buffer. Cron and
-heartbeat modes load reduced subsets.
+pending carry-over items, and the preconscious buffer. Cron mode loads
+a reduced subset: SOUL.md, IDENTITY.md, USER.md, AGENTS.md, the time
+and MEMORY.md. The heartbeat gate does not use the bootstrap at all;
+it builds its own prompt from HEARTBEAT.md and the time (see Cron and
+heartbeat).
 
 Bootstrap tokens are counted (len/3.5 heuristic) against a hard 60%
 cap of the model's context window; overflow refuses to start with a
