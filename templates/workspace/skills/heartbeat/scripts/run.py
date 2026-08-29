@@ -13,7 +13,6 @@ from zoneinfo import ZoneInfo
 DEFAULT_CONFIG = {
     "morning_deadline_hour": 8,
     "learnings_max_entries": 30,
-    "carryover_stale_days": 7,
 }
 
 
@@ -30,17 +29,16 @@ def load_config(skill_data: Path) -> dict:
         return dict(DEFAULT_CONFIG)
 
 
-def check_yesterday_memory(workspace: Path, tz: ZoneInfo) -> tuple[list[str], list[str]]:
-    triggers: list[str] = []
-    fixed: list[str] = []
+def check_yesterday_memory(workspace: Path, tz: ZoneInfo) -> list[str]:
+    """Create yesterday's daily file if missing. Returns what was fixed."""
     yesterday = (datetime.now(tz) - timedelta(days=1)).date()
     daily_dir = workspace / "memory" / "daily"
     daily_dir.mkdir(parents=True, exist_ok=True)
     yesterday_file = daily_dir / f"{yesterday.isoformat()}.md"
-    if not yesterday_file.exists():
-        yesterday_file.write_text(f"# {yesterday.isoformat()}\n")
-        fixed.append(f"created missing memory file: memory/daily/{yesterday.isoformat()}.md")
-    return triggers, fixed
+    if yesterday_file.exists():
+        return []
+    yesterday_file.write_text(f"# {yesterday.isoformat()}\n")
+    return [f"created missing memory file: memory/daily/{yesterday.isoformat()}.md"]
 
 
 def check_morning_stamp(workspace: Path, tz: ZoneInfo, deadline_hour: int) -> list[str]:
@@ -55,30 +53,6 @@ def check_morning_stamp(workspace: Path, tz: ZoneInfo, deadline_hour: int) -> li
     if "morning" in content.lower():
         return []
     return [f"morning_missed: no morning routine stamp after {deadline_hour:02d}:00"]
-
-
-def check_carryover_stale(workspace: Path, tz: ZoneInfo, stale_days: int) -> list[str]:
-    queue_path = workspace / "skills-data" / "carry-over" / "queue.json"
-    if not queue_path.exists():
-        return []
-    try:
-        queue = json.loads(queue_path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return []
-    now = datetime.now(tz)
-    stale_count = 0
-    for item in queue:
-        if item.get("status") != "pending":
-            continue
-        try:
-            ts = datetime.fromisoformat(item["timestamp"])
-            if (now - ts).days >= stale_days:
-                stale_count += 1
-        except (ValueError, TypeError, KeyError):
-            pass
-    if stale_count > 0:
-        return [f"carryover_stale: {stale_count} item(s) pending > {stale_days} days"]
-    return []
 
 
 def check_learnings_full(workspace: Path, max_entries: int) -> list[str]:
@@ -128,22 +102,17 @@ def _once_a_day(triggers: list[str], skill_data: Path, key: str, today: str) -> 
 def run_watchdog(workspace: Path, skill_data: Path, tz: ZoneInfo) -> dict:
     config = load_config(skill_data)
     all_triggers: list[str] = []
-    all_fixed: list[str] = []
+    all_fixed = check_yesterday_memory(workspace, tz)
 
-    triggers, fixed = check_yesterday_memory(workspace, tz)
-    all_triggers.extend(triggers)
-    all_fixed.extend(fixed)
-
+    today = datetime.now(tz).date().isoformat()
     all_triggers.extend(_once_a_day(
         check_morning_stamp(workspace, tz, config["morning_deadline_hour"]),
-        skill_data, "morning_missed", datetime.now(tz).date().isoformat(),
+        skill_data, "morning_missed", today,
     ))
-    all_triggers.extend(
-        check_carryover_stale(workspace, tz, config["carryover_stale_days"])
-    )
-    all_triggers.extend(
-        check_learnings_full(workspace, config["learnings_max_entries"])
-    )
+    all_triggers.extend(_once_a_day(
+        check_learnings_full(workspace, config["learnings_max_entries"]),
+        skill_data, "learnings_full", today,
+    ))
 
     status = "attention" if all_triggers else "clean"
     result = {

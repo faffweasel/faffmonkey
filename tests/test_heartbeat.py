@@ -54,17 +54,14 @@ class TestWatchdogConfig:
         config = watchdog.load_config(tmp_path)
         assert config["morning_deadline_hour"] == 8
         assert config["learnings_max_entries"] == 30
-        assert config["carryover_stale_days"] == 7
 
     def test_custom_config(self, tmp_path):
         (tmp_path / "config.json").write_text(json.dumps({
             "morning_deadline_hour": 10,
-            "learnings_max_entries": 50,
         }))
         config = watchdog.load_config(tmp_path)
         assert config["morning_deadline_hour"] == 10
-        assert config["learnings_max_entries"] == 50
-        assert config["carryover_stale_days"] == 7
+        assert config["learnings_max_entries"] == 30
 
     def test_invalid_json_uses_defaults(self, tmp_path):
         (tmp_path / "config.json").write_text("not json")
@@ -76,13 +73,12 @@ class TestWatchdogYesterdayMemory:
     def test_creates_missing_memory_file(self, tmp_path):
         tz = ZoneInfo("UTC")
         yesterday = (datetime.now(tz) - timedelta(days=1)).date()
-        triggers, fixed = watchdog.check_yesterday_memory(tmp_path, tz)
+        fixed = watchdog.check_yesterday_memory(tmp_path, tz)
         memory_file = tmp_path / "memory" / "daily" / f"{yesterday.isoformat()}.md"
         assert memory_file.exists()
         assert f"# {yesterday.isoformat()}" in memory_file.read_text()
         assert len(fixed) == 1
         assert "created missing memory file" in fixed[0]
-        assert len(triggers) == 0
 
     def test_existing_memory_file_untouched(self, tmp_path):
         tz = ZoneInfo("UTC")
@@ -91,10 +87,9 @@ class TestWatchdogYesterdayMemory:
         memory_dir.mkdir(parents=True)
         memory_file = memory_dir / f"{yesterday.isoformat()}.md"
         memory_file.write_text("# existing content")
-        triggers, fixed = watchdog.check_yesterday_memory(tmp_path, tz)
+        fixed = watchdog.check_yesterday_memory(tmp_path, tz)
         assert memory_file.read_text() == "# existing content"
-        assert len(fixed) == 0
-        assert len(triggers) == 0
+        assert fixed == []
 
 
 class TestMorningMissedIsRaisedOnceADay:
@@ -146,44 +141,6 @@ class TestWatchdogMorningStamp:
         triggers = watchdog.check_morning_stamp(tmp_path, tz, deadline_hour=0)
         assert len(triggers) == 1
         assert "morning_missed" in triggers[0]
-
-
-class TestWatchdogCarryoverStale:
-    def test_flags_stale_items(self, tmp_path):
-        tz = ZoneInfo("UTC")
-        queue_dir = tmp_path / "skills-data" / "carry-over"
-        queue_dir.mkdir(parents=True)
-        old_ts = (datetime.now(tz) - timedelta(days=10)).isoformat()
-        queue = [{"status": "pending", "timestamp": old_ts, "message": "old item"}]
-        (queue_dir / "queue.json").write_text(json.dumps(queue))
-        triggers = watchdog.check_carryover_stale(tmp_path, tz, stale_days=7)
-        assert len(triggers) == 1
-        assert "carryover_stale" in triggers[0]
-
-    def test_no_flag_for_fresh_items(self, tmp_path):
-        tz = ZoneInfo("UTC")
-        queue_dir = tmp_path / "skills-data" / "carry-over"
-        queue_dir.mkdir(parents=True)
-        fresh_ts = datetime.now(tz).isoformat()
-        queue = [{"status": "pending", "timestamp": fresh_ts, "message": "fresh"}]
-        (queue_dir / "queue.json").write_text(json.dumps(queue))
-        triggers = watchdog.check_carryover_stale(tmp_path, tz, stale_days=7)
-        assert len(triggers) == 0
-
-    def test_ignores_delivered_items(self, tmp_path):
-        tz = ZoneInfo("UTC")
-        queue_dir = tmp_path / "skills-data" / "carry-over"
-        queue_dir.mkdir(parents=True)
-        old_ts = (datetime.now(tz) - timedelta(days=10)).isoformat()
-        queue = [{"status": "delivered", "timestamp": old_ts, "message": "done"}]
-        (queue_dir / "queue.json").write_text(json.dumps(queue))
-        triggers = watchdog.check_carryover_stale(tmp_path, tz, stale_days=7)
-        assert len(triggers) == 0
-
-    def test_no_queue_file(self, tmp_path):
-        tz = ZoneInfo("UTC")
-        triggers = watchdog.check_carryover_stale(tmp_path, tz, stale_days=7)
-        assert len(triggers) == 0
 
 
 class TestWatchdogLearningsFull:
@@ -264,6 +221,22 @@ class TestWatchdogRunFull:
         result = watchdog.run_watchdog(workspace, skill_data, tz)
         assert result["status"] == "attention"
         assert any("learnings_full" in t for t in result["triggers"])
+
+    def test_learnings_full_is_raised_once_a_day(self, tmp_path):
+        """A full LEARNINGS.md stays full until someone runs self-review,
+        so without the stamp the heartbeat escalated about it every hour."""
+        tz = ZoneInfo("UTC")
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        skill_data = tmp_path / "skill_data"
+        lines = ["# L\n"] + [f"- item {i}\n" for i in range(40)]
+        (workspace / "LEARNINGS.md").write_text("".join(lines))
+
+        first = watchdog.run_watchdog(workspace, skill_data, tz)
+        second = watchdog.run_watchdog(workspace, skill_data, tz)
+        assert first["status"] == "attention"
+        assert second["status"] == "clean"
+        assert second["triggers"] == []
 
 
 # -- triggers loading --
