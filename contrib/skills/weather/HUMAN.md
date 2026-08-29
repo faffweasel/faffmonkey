@@ -24,10 +24,33 @@ Stdlib only.
    Named cities in queries are geocoded, so the location file is only the
    default.
 
+## Sensor: readings and a rain alert
+
+`scripts/run.py` is the sensor entry point. On a `session: "none"` cron
+job it appends current conditions plus the rain outlook for the next
+few hours to `workspace/readings/weather.jsonl` (seven days kept), and
+drops a heartbeat trigger when rain becomes likely within the
+lookahead. The trigger fires on the dry-to-wet transition and re-arms
+when the outlook is dry again, so a shower in the morning and another
+in the evening are two warnings, and a showery afternoon is one.
+
+```json
+{"id": "weather-sensor", "schedule": "*/15 * * * *", "skill": "weather",
+ "session": "none", "deliver": {"mode": "none"}}
+```
+
+Tuning, all optional, in `skills-data/weather/config.json`:
+
+```json
+{"rain_lookahead_hours": 3, "rain_probability": 0.5}
+```
+
+The free tier allows 1,000 calls a day; every 15 minutes is 192 (a
+current and a forecast call each run). The transition state is in
+`skills-data/weather/watch.json`.
+
 ## Notes
 
-- Responses cache in `skills-data/weather/cache.json` for 15 minutes; the
-  free tier's rate limits are generous but this keeps chat snappy.
 - Data is ODbL-licensed; the attribution line in output is required.
 - Works well with a morning cron job (use `"session": "agent"` so the skill
   can be invoked): "run weather advice and fold anything notable into the

@@ -1,7 +1,8 @@
 # aqi: setup and configuration
 
 Air quality data from the World Air Quality Index project (aqicn.org).
-Stdlib-only; free tier allows 1000 calls/day.
+Stdlib-only. The free token's default quota is 1,000 requests per second,
+so polling is never the constraint.
 
 ## Setup
 
@@ -40,9 +41,33 @@ what the agent uses for a plain "what's the air like" and for the morning
 briefing, reads that station. The pin lives in `skills-data/aqi/config.json`;
 `aqi unpin` clears it.
 
-## Cron alerts (optional)
+## Sensor: readings and a threshold alert
 
-Add a morning cron job with `"session": "agent"` (skill invocation needs a
-tool-capable session) and a prompt like "Run the aqi skill's multi command
-and report only if it matters". The SKILL.md gives the agent thresholds:
-silent up to 100, brief note above 100, strong recommendation above 150.
+`scripts/run.py` is the sensor entry point. On a `session: "none"` cron
+job it appends the current reading (the pinned station, else the
+average of the stations near your location) to
+`workspace/readings/aqi.jsonl`, kept for seven days, and drops a
+heartbeat trigger the first time each day the AQI is above your
+threshold. The heartbeat then wakes the agent with the reading and
+your standing instructions, and it decides what to say.
+
+1. Set the threshold in `skills-data/aqi/config.json` (the same file as
+   the station pin), or tell the agent "warn me if the AQI goes above
+   180":
+
+   ```json
+   {"watch_threshold": 180}
+   ```
+
+   Without it the sensor only records readings, which still lets the
+   agent answer "how has the air been this week" from the file.
+
+2. Add the job to `workspace/config/jobs.json`, or ask the agent:
+
+   ```json
+   {"id": "aqi-sensor", "schedule": "0 * * * *", "skill": "aqi",
+    "session": "none", "deliver": {"mode": "none"}}
+   ```
+
+Once-a-day is recorded in `skills-data/aqi/watch.json`; delete it to
+re-arm. The morning briefing still runs `aqi current` itself.

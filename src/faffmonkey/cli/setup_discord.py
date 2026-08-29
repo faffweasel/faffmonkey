@@ -5,6 +5,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from faffmonkey import __version__
 from faffmonkey.cli.setup_provider import (
     _append_env_var,
     _read_input,
@@ -23,7 +24,7 @@ def _validate_token(token: str) -> bool:
             "Authorization": f"Bot {token}",
             # Discord's edge returns 403 to urllib's default User-Agent
             # before the token is checked.
-            "User-Agent": "faffmonkey/0.1",
+            "User-Agent": f"faffmonkey/{__version__}",
         },
         method="GET",
     )

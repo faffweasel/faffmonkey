@@ -35,7 +35,7 @@ These ship in `templates/workspace/skills/` and are copied to `workspace/skills/
 | **carry-over** | add, list, get, done, clear | Queue something to tell the user in a future session. Items have priority levels (urgent, normal, curious, simmering) and are surfaced at next session start. |
 | **document-search** | index, search | Full-text search (FTS5) over `workspace/documents/` (md, txt, csv, xlsx, pdf). |
 | **cron-manager** | list, add, update, remove, disable, enable, history | Schedule, list, and manage recurring tasks and one-shot reminders. CRUD operations on `workspace/config/jobs.json`. |
-| **heartbeat** | run | Ambient awareness. Watchdog script runs deterministic checks (file existence, timestamps, thresholds) and writes `triggers.json`. The scheduler's heartbeat handler reads triggers and decides whether to call the LLM, which sees only `HEARTBEAT.md` and the clock; watches that need a tool are cron jobs, not heartbeat lines. |
+| **heartbeat** | run, poke | The heartbeat's watchdog: health checks, then every trigger sensors dropped in `skills-data/heartbeat/triggers.d/` and the latest line of every `workspace/readings/*.jsonl`, written to `triggers.json`. The scheduler wakes the agent (an agent turn with tools) only when there is a trigger. `poke` drops a trigger by hand. |
 | **memory-search** | index, search | Search across all memory files. FTS5 keyword search, optional vector semantic search, or hybrid (RRF merge). Index is incremental (SHA-256 content hashing), refreshed before every search and by the runtime after each memory flush and daily note. |
 | **morning-routine** | prepare, stamp | Daily startup: read carry-over, check preconscious buffer, gather overnight cron data, compose a greeting. Triggered by cron, not invoked directly. |
 | **preconscious** | add, read, run, drop_lowest | Track what should be top-of-mind for the next few days. Scored buffer of max 5 items with Currency (freshness) and Importance scores. Items decay daily and fade naturally. |
@@ -98,12 +98,14 @@ Each skill gets a persistent data directory at `workspace/skills-data/<name>/`. 
 
 The data directory is passed to scripts via the `SKILL_DATA` environment variable. Skills use it for indexes, queues, caches, config, and any state that should persist across invocations.
 
+Observations of the world do not go there. A skill that measures something (a sensor: the contrib `aqi` and `weather` skills) appends one JSON line per run to `workspace/readings/<source>.jsonl` (`at`, `summary`, `data`; latest last; about seven days kept) and, when its rule fires, drops a trigger file in `skills-data/heartbeat/triggers.d/` for the heartbeat to wake the agent with. The skill's own state (threshold, last alerted, last condition) stays in its data directory. The heartbeat skill's SKILL.md gives both formats.
+
 Examples:
 
 | Skill | Data directory contents |
 |-------|------------------------|
 | carry-over | `queue.json` |
-| heartbeat | `config.json`, `triggers.json`, `reported.json` |
+| heartbeat | `config.json`, `triggers.json`, `reported.json`, `triggers.d/` (the trigger tray sensors write into) |
 | memory-search | `index.sqlite`, `config.json` |
 | preconscious | `buffer.json` |
 

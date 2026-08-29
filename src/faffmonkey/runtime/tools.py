@@ -23,6 +23,7 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
+from faffmonkey import __version__
 from faffmonkey.runtime.blocklist import check_blocklist
 from faffmonkey.runtime.ingest import ingest as ingest_content
 from faffmonkey.runtime.retry import run_with_timeout
@@ -1385,7 +1386,7 @@ class ToolRegistry:
         )
 
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "faffmonkey/0.1"})
+            req = urllib.request.Request(url, headers={"User-Agent": f"faffmonkey/{__version__}"})
             with opener.open(req, timeout=FETCH_TIMEOUT) as resp:
                 data = resp.read(MAX_FETCH_BYTES + 1)
                 if len(data) > MAX_FETCH_BYTES:

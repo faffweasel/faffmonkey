@@ -696,33 +696,6 @@ class TestWeather:
         assert result.returncode == 2
         assert "OPENWEATHERMAP_API_KEY" in result.stderr
 
-    def test_cache_round_trip_and_expiry(self, monkeypatch, tmp_path):
-        w = self._import(monkeypatch, tmp_path)
-        w.cache_put("k1", {"a": 1})
-        assert w.cache_get("k1") == {"a": 1}
-        assert w.cache_get("missing") is None
-
-        stale = json.loads(w.CACHE_FILE.read_text())
-        stale["k1"]["fetched_at"] -= w.CACHE_TTL_SECONDS + 1
-        w.CACHE_FILE.write_text(json.dumps(stale))
-        assert w.cache_get("k1") is None
-
-    def test_fetch_uses_cache(self, monkeypatch, tmp_path):
-        from unittest.mock import MagicMock, patch as mock_patch
-        w = self._import(monkeypatch, tmp_path)
-
-        mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps({"temp": 20}).encode()
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        with mock_patch.object(
-            w.urllib.request, "urlopen", return_value=mock_resp,
-        ) as mock_open:
-            first = w._fetch("/data/2.5/weather", {"lat": 1, "lon": 2})
-            second = w._fetch("/data/2.5/weather", {"lat": 1, "lon": 2})
-        assert first == second == {"temp": 20}
-        assert mock_open.call_count == 1
-
     def test_geocode_parses_top_result(self, monkeypatch, tmp_path):
         w = self._import(monkeypatch, tmp_path)
         monkeypatch.setattr(
@@ -1263,3 +1236,181 @@ class TestCurrency:
             sys.path.pop(0)
 
 
+
+
+def _load_sensor(skill: str, name: str):
+    """Import a contrib skill's run.py by path, with its scripts directory
+    importable so `import aqi` / `import weather` inside it resolves."""
+    import importlib.util
+    scripts = _CONTRIB_SKILLS / skill / "scripts"
+    sys.path.insert(0, str(scripts))
+    try:
+        spec = importlib.util.spec_from_file_location(name, scripts / "run.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    finally:
+        sys.path.pop(0)
+    return mod
+
+
+class TestAqiSensor:
+    """A session "none" job that records readings and drops one trigger a
+    day above the threshold. The re-arm rule is the sensor's, not the
+    runtime's, and the state is written before the trigger."""
+
+    def _sensor(self, monkeypatch, tmp_path, reading, threshold=180):
+        from unittest.mock import patch
+        monkeypatch.setenv("WORKSPACE", str(tmp_path))
+        skill_data = tmp_path / "skills-data" / "aqi"
+        skill_data.mkdir(parents=True)
+        monkeypatch.setenv("SKILL_DATA", str(skill_data))
+        monkeypatch.setenv("TZ", "UTC")
+        if threshold is not None:
+            (skill_data / "config.json").write_text(json.dumps({"watch_threshold": threshold}))
+        sensor = _load_sensor("aqi", "aqi_sensor")
+        return sensor, patch.object(sensor.aqi, "get_current", return_value=reading)
+
+    def _trigger(self, tmp_path):
+        return tmp_path / "skills-data" / "heartbeat" / "triggers.d" / "aqi-high.json"
+
+    def test_above_threshold_records_and_triggers_once_a_day(self, monkeypatch, tmp_path):
+        reading = {"city": "Hoan Kiem", "aqi": 192, "dominant": "pm25", "time": "t"}
+        sensor, patched = self._sensor(monkeypatch, tmp_path, reading)
+        with patched:
+            assert sensor.main() == 0
+            item = json.loads(self._trigger(tmp_path).read_text())
+            assert item["kind"] == "alert" and item["source"] == "aqi"
+            assert "AQI 192" in item["text"] and "180" in item["text"]
+            self._trigger(tmp_path).unlink()
+            assert sensor.main() == 0
+            assert not self._trigger(tmp_path).exists()
+        lines = (tmp_path / "readings" / "aqi.jsonl").read_text().splitlines()
+        assert len(lines) == 2
+        assert "AQI 192" in json.loads(lines[-1])["summary"]
+        state = json.loads((tmp_path / "skills-data" / "aqi" / "watch.json").read_text())
+        assert state["last_alerted"]
+
+    def test_below_threshold_records_only(self, monkeypatch, tmp_path):
+        sensor, patched = self._sensor(monkeypatch, tmp_path, {"city": "X", "aqi": 90, "dominant": "pm25"})
+        with patched:
+            assert sensor.main() == 0
+        assert not self._trigger(tmp_path).exists()
+        assert len((tmp_path / "readings" / "aqi.jsonl").read_text().splitlines()) == 1
+
+    def test_no_threshold_records_only(self, monkeypatch, tmp_path):
+        sensor, patched = self._sensor(monkeypatch, tmp_path, {"city": "X", "aqi": 400, "dominant": "pm25"}, threshold=None)
+        with patched:
+            assert sensor.main() == 0
+        assert not self._trigger(tmp_path).exists()
+        assert (tmp_path / "readings" / "aqi.jsonl").exists()
+
+    def test_multi_station_result_uses_the_average(self, monkeypatch, tmp_path):
+        reading = {"city": "Hanoi", "count": 3, "avg_aqi": 200, "min_aqi": 150, "max_aqi": 240, "worst": "Old Quarter"}
+        sensor, patched = self._sensor(monkeypatch, tmp_path, reading)
+        with patched:
+            assert sensor.main() == 0
+        summary = json.loads((tmp_path / "readings" / "aqi.jsonl").read_text())["summary"]
+        assert "AQI 200" in summary and "3 stations" in summary and "Old Quarter" in summary
+        assert self._trigger(tmp_path).exists()
+
+    def test_error_result_fails_the_run(self, monkeypatch, tmp_path, capsys):
+        sensor, patched = self._sensor(monkeypatch, tmp_path, {"error": "No location configured"})
+        with patched:
+            assert sensor.main() == 1
+        assert "No location configured" in capsys.readouterr().err
+        assert not (tmp_path / "readings").exists()
+
+
+class TestWeatherSensor:
+    """Rain is a transition, not a level: warn on dry-to-wet, re-arm on
+    wet-to-dry, so a showery day is one warning per shower."""
+
+    def _sensor(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("WORKSPACE", str(tmp_path))
+        skill_data = tmp_path / "skills-data" / "weather"
+        skill_data.mkdir(parents=True)
+        monkeypatch.setenv("SKILL_DATA", str(skill_data))
+        monkeypatch.setenv("TZ", "UTC")
+        return _load_sensor("weather", "weather_sensor")
+
+    def _run(self, sensor, pop):
+        from unittest.mock import patch
+        import time
+        forecast = {"city": {"timezone": 0}, "list": [
+            {"dt": int(time.time()) + 3600, "pop": pop, "weather": [{"description": "light rain"}]},
+        ]}
+        current = {
+            "main": {"temp": 35, "feels_like": 39, "humidity": 78},
+            "weather": [{"description": "broken clouds"}], "wind": {"speed": 3},
+        }
+        with (
+            patch.object(sensor.weather, "resolve_target", return_value=(1.0, 2.0, "Testville")),
+            patch.object(sensor.weather, "get_current", return_value=current),
+            patch.object(sensor.weather, "get_forecast", return_value=forecast),
+        ):
+            return sensor.main()
+
+    def _trigger(self, tmp_path):
+        return tmp_path / "skills-data" / "heartbeat" / "triggers.d" / "weather-rain.json"
+
+    def test_rain_ahead_triggers_once_per_transition(self, monkeypatch, tmp_path):
+        sensor = self._sensor(monkeypatch, tmp_path)
+        state = tmp_path / "skills-data" / "weather" / "watch.json"
+
+        assert self._run(sensor, 0.7) == 0
+        assert self._trigger(tmp_path).exists()
+        assert json.loads(state.read_text())["last_state"] == "wet"
+        self._trigger(tmp_path).unlink()
+
+        assert self._run(sensor, 0.7) == 0
+        assert not self._trigger(tmp_path).exists()
+
+        assert self._run(sensor, 0.1) == 0
+        assert json.loads(state.read_text())["last_state"] == "dry"
+        assert not self._trigger(tmp_path).exists()
+
+        assert self._run(sensor, 0.8) == 0
+        assert self._trigger(tmp_path).exists()
+        item = json.loads(self._trigger(tmp_path).read_text())
+        assert item["kind"] == "alert" and "80%" in item["text"]
+
+    def test_reading_carries_conditions_and_outlook(self, monkeypatch, tmp_path):
+        sensor = self._sensor(monkeypatch, tmp_path)
+        self._run(sensor, 0.7)
+        line = json.loads((tmp_path / "readings" / "weather.jsonl").read_text())
+        assert "broken clouds" in line["summary"] and "35C" in line["summary"]
+        assert "70% chance of rain" in line["summary"]
+        assert line["data"]["rain_likely"] is True
+
+    def test_slots_beyond_the_lookahead_do_not_count(self, monkeypatch, tmp_path):
+        import time
+        sensor = self._sensor(monkeypatch, tmp_path)
+        now = time.time()
+        forecast = {"city": {"timezone": 0}, "list": [
+            {"dt": int(now) + 5 * 3600, "pop": 0.9, "weather": [{"description": "rain"}]},
+        ]}
+        wet, phrase = sensor.rain_outlook(forecast, now, 3, 0.5)
+        assert wet is False and "no forecast slots" in phrase
+
+
+class TestRemindersDropHeartbeatTrigger:
+    def test_delivered_reminder_leaves_an_occasion_trigger(self, monkeypatch, tmp_path, capsys):
+        import importlib
+        from datetime import datetime, timedelta
+        monkeypatch.setenv("WORKSPACE", str(tmp_path))
+        monkeypatch.delenv("SKILL_DATA", raising=False)
+        (tmp_path / "config").mkdir(exist_ok=True)
+        sys.path.insert(0, str(_CONTRIB_SKILLS / "reminders" / "scripts"))
+        import remind
+        importlib.reload(remind)
+        sys.path.pop(0)
+        due = (datetime.now(remind.local_tz()) - timedelta(minutes=5)).isoformat(timespec="seconds")
+        remind.save_reminders({"reminders": [{"id": "rem_007", "text": "go for a run", "fire_at": due}]})
+
+        assert remind.cmd_check() == 0
+
+        assert "REMINDER: go for a run" in capsys.readouterr().out
+        trigger = tmp_path / "skills-data" / "heartbeat" / "triggers.d" / "reminders-rem_007.json"
+        item = json.loads(trigger.read_text())
+        assert item["kind"] == "occasion" and item["source"] == "reminders"
+        assert "go for a run" in item["text"]

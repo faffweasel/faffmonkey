@@ -806,3 +806,22 @@ class TestCommandPathsAreWorkspaceRelative:
         result = _check_commands(state_dir, tmp_path)
         assert result == YELLOW
         assert "script not found" in capsys.readouterr().out
+
+
+class TestCheckHeartbeatSession:
+    """A heartbeat wake is an agent turn; a job left in the pre-0.2.0 shape
+    still runs, as a tool-less completion that can act on nothing."""
+
+    def test_isolated_heartbeat_job_is_flagged(self, tmp_path, capsys):
+        config = _make_config(heartbeat=HeartbeatConfig(enabled=True))
+        workspace = tmp_path / "workspace"
+        (workspace / "config").mkdir(parents=True)
+        (workspace / "config" / "jobs.json").write_text(json.dumps([
+            {"id": "heartbeat", "schedule": "0 * * * *", "context": "heartbeat",
+             "session": "isolated", "prompt": "check"},
+        ]))
+
+        assert _check_heartbeat(config, workspace) == "--"
+
+        out = capsys.readouterr().out
+        assert "agent turn" in out and "faff update" in out

@@ -95,7 +95,7 @@ docker compose build        # rebuild so the image installs the dependency
 
 Each wizard walks through creating the bot, validates the token, asks
 for your user id (only listed users get replies), and, the first time,
-creates the four jobs that make the agent's day: an hourly heartbeat,
+creates the four jobs that make the agent's day: a heartbeat every five minutes (free unless something needs the agent),
 a 07:05 morning greeting, a 22:00 evening memory wrap and a silent
 06:01 preconscious-decay pass (no LLM, keeps the top-of-mind buffer
 decaying as designed). They deliver

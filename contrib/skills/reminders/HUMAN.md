@@ -35,4 +35,8 @@ live in `workspace/skills-data/reminders/reminders.json` (legacy
 - `scripts/run.py` (what `session: "none"` cron jobs invoke) delegates to
   `remind.py check`.
 - Fired one-shot reminders are removed; recurring reminders advance.
+- Each fired reminder also drops an `occasion` trigger in
+  `skills-data/heartbeat/triggers.d/`, so the heartbeat's next wake can
+  comment on it with the current readings in front of it ("skip the run,
+  35C and rain by four"). The reminder is delivered by this job regardless.
   Delete or edit `skills-data/reminders/reminders.json` by hand if things get tangled.

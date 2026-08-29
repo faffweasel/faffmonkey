@@ -1,8 +1,8 @@
 ---
 name: weather
-description: Current weather and 5-day forecast via OpenWeatherMap. Reads location from config/location.json. Caches responses for 15 minutes. Use for weather, forecast, will-it-rain, temperature, and what-to-wear questions.
+description: Current weather and 5-day forecast via OpenWeatherMap. Reads location from config/location.json. Use for weather, forecast, will-it-rain, temperature, and what-to-wear questions. Its run action is the rain sensor for the heartbeat.
 metadata: '{"faffmonkey":{"requires":{"env":["OPENWEATHERMAP_API_KEY"]}}}'
-actions: weather
+actions: weather, run
 ---
 
 ## When to use
@@ -33,4 +33,14 @@ weather advice [city]      current + next two days together
 - wind speed (above ~8 m/s is genuinely windy)
 - sunrise/sunset when timing matters (runs, photos, commutes)
 
-Keep the advice to a sentence or two grounded in the numbers, and keep the OpenWeatherMap attribution when quoting data verbatim. Responses are cached for 15 minutes, so repeat calls in a conversation are free; do not hesitate to re-check.
+Keep the advice to a sentence or two grounded in the numbers, and keep the OpenWeatherMap attribution when quoting data verbatim.
+
+## Watching for rain
+
+"Warn me before it rains" is the sensor, not a HEARTBEAT.md line. Make sure a sensor job exists via cron-manager:
+
+```
+add '{"id": "weather-sensor", "schedule": "*/15 * * * *", "skill": "weather", "session": "none", "deliver": {"mode": "none"}}'
+```
+
+The `run` action appends conditions and the short-range rain outlook to `readings/weather.jsonl` and drops a heartbeat trigger when rain becomes likely within the next three hours, once per dry-to-wet transition; the heartbeat wakes you with it. Lookahead and probability live in `skills-data/weather/config.json` (`rain_lookahead_hours`, `rain_probability`). Do not invoke `run` in conversation; `weather now` and `weather advice` are the answers to questions.

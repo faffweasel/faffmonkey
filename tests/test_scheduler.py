@@ -2664,147 +2664,75 @@ class TestConfiguredTimeout:
         for call in mock_cwt.call_args_list:
             assert call.kwargs.get("timeout") == 90
 
-    def test_heartbeat_passes_model_timeout(self, tmp_path):
-        config = _make_config(models={
-            "main": ModelConfig(
-                provider="test", model="test-model",
-                base_url="http://localhost:11434/v1", api_key="",
-                timeout=60,
-            ),
-        })
-        workspace = tmp_path / "workspace"
-        workspace.mkdir()
-        (workspace / "config").mkdir()
-        (workspace / "SOUL.md").write_text("You are a test agent.")
-        (workspace / "HEARTBEAT.md").write_text("Check things.")
-        state_dir = tmp_path / "state"
-        state_dir.mkdir()
+class TestHeartbeatWakePrompt:
+    """What a wake is told: the job's prompt (or the default), then the
+    triggers, the readings, HEARTBEAT.md and what was sent recently, in
+    that order. Every section is something the model would otherwise have
+    to remember or guess."""
 
-        provider = MagicMock()
-        provider.complete.return_value = CompletionResponse(text="NO_REPLY", model="test")
-
-        job = CronJob(id="hb", schedule="* * * * *", prompt="check", context="heartbeat")
-
-        from faffmonkey.runtime.scheduler import _run_heartbeat
-        with patch("faffmonkey.runtime.scheduler._complete_with_timeout", wraps=_complete_with_timeout) as mock_cwt:
-            _run_heartbeat(job, config, lambda m: provider, workspace, state_dir, now=DAYTIME)
-
-        assert mock_cwt.call_args_list
-        for call in mock_cwt.call_args_list:
-            assert call.kwargs.get("timeout") == 60
-
-
-class TestHeartbeatGateFraming:
-    def test_gate_frames_standing_instructions(self, tmp_path):
-        """HEARTBEAT.md said "Always report the current date and time" and
-        every hourly run answered NO_REPLY: the gate was only ever asked
-        whether anything needed attention, on top of a bare checklist."""
+    def _setup(self, tmp_path, answer="NO_REPLY"):
         config = _make_config()
         workspace = tmp_path / "workspace"
-        workspace.mkdir()
-        (workspace / "config").mkdir()
-        (workspace / "HEARTBEAT.md").write_text("Always report the current date and time.")
-        state_dir = tmp_path / "state"
-        state_dir.mkdir()
-        provider = MagicMock()
-        provider.complete.return_value = CompletionResponse(text="NO_REPLY", model="test")
-        job = CronJob(id="hb", schedule="0 * * * *", prompt=None, context="heartbeat")
-
-        _run_heartbeat(job, config, lambda m: provider, workspace, state_dir, now=DAYTIME)
-
-        request = provider.complete.call_args.args[0]
-        system, user = request.messages[0].content, request.messages[1].content
-        assert request.messages[0].role == "system"
-        assert "Always report the current date and time." in system
-        assert "acted on every time" in system
-        assert "report something now" in user
-        assert user.rstrip().endswith("respond with exactly NO_REPLY.")
-
-    def test_wizard_job_uses_the_same_gate_prompt(self):
-        from faffmonkey.cli.setup_provider import HEARTBEAT_JOB
-        from faffmonkey.runtime.scheduler import HEARTBEAT_GATE_PROMPT
-        assert HEARTBEAT_JOB["prompt"] == HEARTBEAT_GATE_PROMPT
-
-
-class TestWatchdogPathSeesTheChecklist:
-    """HEARTBEAT.md said "always report the time". With no morning job the
-    watchdog flagged a missed morning every hour, the run took the
-    attention path, and that path loads the cron bootstrap, which has no
-    HEARTBEAT.md in it. The user got the missed-morning line and never the
-    time."""
-
-    def test_attention_prompt_carries_heartbeat_md_and_the_triggers(self, tmp_path):
-        config = _make_config()
-        workspace = tmp_path / "workspace"
-        workspace.mkdir()
-        (workspace / "config").mkdir()
+        (workspace / "config").mkdir(parents=True)
         (workspace / "SOUL.md").write_text("You are a test agent.")
-        (workspace / "HEARTBEAT.md").write_text("Always report the current date and time.")
+        (workspace / "HEARTBEAT.md").write_text("Never repeat a warning.")
         data = workspace / "skills-data" / "heartbeat"
         data.mkdir(parents=True)
         (data / "triggers.json").write_text(json.dumps({
-            "status": "attention", "triggers": ["morning_missed: no stamp after 08:00"],
+            "status": "attention",
+            "triggers": ["morning_missed: no stamp after 08:00"],
+            "readings": ["aqi (5m ago): AQI 40"],
         }))
         state_dir = tmp_path / "state"
         state_dir.mkdir()
         provider = MagicMock()
-        provider.complete.return_value = CompletionResponse(text="It is 14:00; the morning was missed.", model="t")
-        job = CronJob(id="hb", schedule="0 * * * *", prompt=None, context="heartbeat")
+        provider.complete.return_value = CompletionResponse(text=answer, model="t")
+        return config, workspace, state_dir, provider
+
+    def test_default_prompt_then_sections_in_order(self, tmp_path):
+        from faffmonkey.runtime.scheduler import HEARTBEAT_PROMPT
+        config, workspace, state_dir, provider = self._setup(tmp_path)
+        job = CronJob(id="hb", schedule="*/5 * * * *", prompt=None, context="heartbeat", session="agent")
 
         with patch("faffmonkey.runtime.scheduler._refresh_triggers"):
-            text, _usage, skip = _run_heartbeat(job, config, lambda m: provider, workspace, state_dir, now=DAYTIME)
+            _text, _usage, skip = _run_heartbeat(
+                job, config, lambda m: provider, workspace, state_dir, now=DAYTIME,
+                recent=[{"at": "2026-05-14T09:00:00Z", "text": "Morning was missed."}],
+            )
 
-        assert skip is None and text.startswith("It is 14:00")
-        user = provider.complete.call_args.args[0].messages[-1].content
-        assert "Always report the current date and time." in user
-        assert "morning_missed" in user
-        assert "report something now" in user
-
-
-class TestHeartbeatEmptyAnswerIsRetried:
-    """`faff cron run heartbeat` printed "success (2071ms)" and nothing
-    else: the model had returned an empty string, which the heartbeat
-    treated as NO_REPLY without a retry or a log line. The chat loop had
-    always retried empties; the heartbeat never did."""
-
-    def _setup(self, tmp_path, answers):
-        config = _make_config()
-        workspace = tmp_path / "workspace"
-        workspace.mkdir()
-        (workspace / "config").mkdir()
-        (workspace / "HEARTBEAT.md").write_text("Always report the current time.")
-        state_dir = tmp_path / "state"
-        state_dir.mkdir()
-        provider = MagicMock()
-        provider.complete.side_effect = [
-            CompletionResponse(text=a, model="test") for a in answers
-        ]
-        job = CronJob(id="hb", schedule="0 * * * *", prompt=None, context="heartbeat")
-        return config, workspace, state_dir, provider, job
-
-    def test_empty_gate_answer_is_asked_again_with_a_nudge(self, tmp_path, caplog):
-        config, workspace, state_dir, provider, job = self._setup(tmp_path, ["", "NO_REPLY"])
-        with caplog.at_level("WARNING"):
-            text, _usage, skip = _run_heartbeat(job, config, lambda m: provider, workspace, state_dir, now=DAYTIME)
-        assert skip is None and _is_no_reply(text)
-        assert provider.complete.call_count == 2
-        nudge = provider.complete.call_args.args[0].messages[-1]
-        assert nudge.role == "user" and "empty" in nudge.content
-        assert "empty response" in caplog.text
-
-    def test_retry_answer_escalates_like_a_first_answer(self, tmp_path):
-        config, workspace, state_dir, provider, job = self._setup(
-            tmp_path, ["", "It is 14:00.", "The time is 14:00, as you asked."],
-        )
-        text, _usage, skip = _run_heartbeat(job, config, lambda m: provider, workspace, state_dir, now=DAYTIME)
         assert skip is None
-        assert text == "The time is 14:00, as you asked."
-        assert provider.complete.call_count == 3
+        user = provider.complete.call_args.args[0].messages[-1].content
+        assert user.startswith(HEARTBEAT_PROMPT)
+        positions = [
+            user.index(s) for s in (
+                "Triggers:", "Latest readings:",
+                "Standing instructions (HEARTBEAT.md):", "Sent by the heartbeat recently:",
+            )
+        ]
+        assert positions == sorted(positions)
+        assert "- morning_missed: no stamp after 08:00" in user
+        assert "- aqi (5m ago): AQI 40" in user
+        assert "Never repeat a warning." in user
+        assert "Morning was missed." in user
 
-    def test_non_empty_answer_is_not_retried(self, tmp_path):
-        config, workspace, state_dir, provider, job = self._setup(tmp_path, ["NO_REPLY"])
-        _run_heartbeat(job, config, lambda m: provider, workspace, state_dir, now=DAYTIME)
-        assert provider.complete.call_count == 1
+    def test_job_prompt_replaces_the_default(self, tmp_path):
+        from faffmonkey.runtime.scheduler import HEARTBEAT_PROMPT
+        config, workspace, state_dir, provider = self._setup(tmp_path)
+        job = CronJob(id="hb", schedule="*/5 * * * *", prompt="Be terse.", context="heartbeat", session="agent")
+
+        with patch("faffmonkey.runtime.scheduler._refresh_triggers"):
+            _run_heartbeat(job, config, lambda m: provider, workspace, state_dir, now=DAYTIME)
+
+        user = provider.complete.call_args.args[0].messages[-1].content
+        assert user.startswith("Be terse.")
+        assert HEARTBEAT_PROMPT not in user
+
+    def test_wizard_job_is_an_agent_wake_with_the_default_prompt(self):
+        from faffmonkey.cli.setup_provider import HEARTBEAT_JOB
+        from faffmonkey.runtime.scheduler import HEARTBEAT_PROMPT
+        assert HEARTBEAT_JOB["prompt"] == HEARTBEAT_PROMPT
+        assert HEARTBEAT_JOB["session"] == "agent"
+        assert HEARTBEAT_JOB["context"] == "heartbeat"
 
 
 # -- fix: SessionStore constructed inside try block --

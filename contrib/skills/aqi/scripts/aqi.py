@@ -21,7 +21,7 @@ import urllib.request
 
 TOKEN = os.environ.get("AQICN_API_KEY", "")
 BASE = "https://api.waqi.info"
-USER_AGENT = "faffmonkey/0.1.0"
+USER_AGENT = "faffmonkey"
 
 
 def _fetch(url):

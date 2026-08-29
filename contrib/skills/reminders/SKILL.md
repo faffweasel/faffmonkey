@@ -40,3 +40,4 @@ All times resolve in the user's timezone. Past one-shot times are rejected; rela
 - After adding, confirm back the resolved time the script printed, so mistakes surface immediately ("Set: call mum, Thursday 9:00").
 - When the reminder-check cron output contains `REMINDER:` lines, deliver each to the user verbatim as its own message, with nothing added except natural phrasing.
 - One-shot reminders disappear after firing; recurring ones advance to the next occurrence automatically.
+- Each delivered reminder also drops a heartbeat trigger, so the next heartbeat wake sees "reminder just delivered: go for a run" beside the latest readings and can add advice if they argue with it. Delivery never waits for that; the reminder itself always goes out on time.

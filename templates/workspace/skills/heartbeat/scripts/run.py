@@ -1,5 +1,9 @@
-"""Deterministic heartbeat checks. Zero LLM cost.
-Runs standalone (session: "none") via cron.
+"""The heartbeat's watchdog. Zero LLM cost.
+
+Runs at the start of every heartbeat tick: its own health checks, then
+every trigger sensors have dropped in triggers.d/ and the latest line of
+every reading in workspace/readings/. Writes triggers.json; the scheduler
+wakes the agent only when status is "attention".
 """
 from __future__ import annotations
 
@@ -14,6 +18,8 @@ DEFAULT_CONFIG = {
     "morning_deadline_hour": 8,
     "learnings_max_entries": 30,
 }
+
+TRIGGER_KINDS = frozenset({"alert", "occasion", "new"})
 
 
 def load_config(skill_data: Path) -> dict:
@@ -99,12 +105,80 @@ def _once_a_day(triggers: list[str], skill_data: Path, key: str, today: str) -> 
     return triggers
 
 
+def collect_triggers(skill_data: Path) -> tuple[list[str], list[str]]:
+    """Every trigger a sensor has dropped, as prompt lines plus the file
+    names, so the scheduler can remove them once the agent has seen them.
+
+    A trigger is {"at", "source", "kind", "text"}; only "text" is required.
+    A file that is not that is reported on stderr and left alone.
+    """
+    triggers_dir = skill_data / "triggers.d"
+    if not triggers_dir.is_dir():
+        return [], []
+    lines: list[str] = []
+    files: list[str] = []
+    for path in sorted(triggers_dir.glob("*.json")):
+        try:
+            item = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            print(f"warning: unreadable trigger {path.name}", file=sys.stderr)
+            continue
+        text = item.get("text") if isinstance(item, dict) else None
+        if not isinstance(text, str) or not text.strip():
+            print(f"warning: trigger {path.name} has no text", file=sys.stderr)
+            continue
+        source = item.get("source") if isinstance(item.get("source"), str) else path.stem
+        kind = item.get("kind") if item.get("kind") in TRIGGER_KINDS else "alert"
+        lines.append(f"{source} ({kind}): {text.strip()}")
+        files.append(path.name)
+    return lines, files
+
+
+def _age(at: str, now: datetime) -> str:
+    try:
+        then = datetime.fromisoformat(at)
+    except (TypeError, ValueError):
+        return "unknown age"
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=now.tzinfo)
+    minutes = int((now - then).total_seconds() // 60)
+    if minutes < 1:
+        return "just now"
+    if minutes < 60:
+        return f"{minutes}m ago"
+    if minutes < 48 * 60:
+        return f"{minutes // 60}h ago"
+    return f"{minutes // (24 * 60)}d ago"
+
+
+def collect_readings(workspace: Path, now: datetime) -> list[str]:
+    """The last line of every readings/<source>.jsonl, as one prompt line
+    each: source, age, summary."""
+    readings_dir = workspace / "readings"
+    if not readings_dir.is_dir():
+        return []
+    lines: list[str] = []
+    for path in sorted(readings_dir.glob("*.jsonl")):
+        try:
+            raw = path.read_text().rstrip("\n").rsplit("\n", 1)[-1]
+            item = json.loads(raw)
+        except (OSError, json.JSONDecodeError):
+            print(f"warning: unreadable reading {path.name}", file=sys.stderr)
+            continue
+        summary = item.get("summary") if isinstance(item, dict) else None
+        if not isinstance(summary, str) or not summary.strip():
+            continue
+        lines.append(f"{path.stem} ({_age(str(item.get('at', '')), now)}): {summary.strip()}")
+    return lines
+
+
 def run_watchdog(workspace: Path, skill_data: Path, tz: ZoneInfo) -> dict:
     config = load_config(skill_data)
+    now = datetime.now(tz)
     all_triggers: list[str] = []
     all_fixed = check_yesterday_memory(workspace, tz)
 
-    today = datetime.now(tz).date().isoformat()
+    today = now.date().isoformat()
     all_triggers.extend(_once_a_day(
         check_morning_stamp(workspace, tz, config["morning_deadline_hour"]),
         skill_data, "morning_missed", today,
@@ -113,12 +187,16 @@ def run_watchdog(workspace: Path, skill_data: Path, tz: ZoneInfo) -> dict:
         check_learnings_full(workspace, config["learnings_max_entries"]),
         skill_data, "learnings_full", today,
     ))
+    dropped, files = collect_triggers(skill_data)
+    all_triggers.extend(dropped)
 
     status = "attention" if all_triggers else "clean"
     result = {
-        "checked_at": datetime.now(tz).isoformat(),
+        "checked_at": now.isoformat(),
         "status": status,
         "triggers": all_triggers,
+        "files": files,
+        "readings": collect_readings(workspace, now),
         "fixed": all_fixed,
     }
 

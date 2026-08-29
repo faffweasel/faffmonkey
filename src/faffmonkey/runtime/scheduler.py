@@ -47,13 +47,21 @@ _SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$")
 # deliver.channel value meaning "wherever the user last spoke".
 LAST_CHANNEL = "last"
 
-# What the heartbeat gate is asked when the job has no prompt of its own.
-# The setup wizard writes the same text into the job it creates.
-HEARTBEAT_GATE_PROMPT = (
-    "Go through HEARTBEAT.md. If any line asks you to report something now, "
-    "or anything on it needs attention, write what the user should hear. "
-    "Only if there is nothing to say, respond with exactly NO_REPLY."
+# What the heartbeat's agent turn is told when the job has no prompt of its
+# own. The setup wizard writes the same text into the job it creates.
+HEARTBEAT_PROMPT = (
+    "The heartbeat woke you because something needs a decision. Below are "
+    "the triggers that woke you, the latest sensor readings, your standing "
+    "instructions from HEARTBEAT.md, and what you have already sent "
+    "recently. Decide whether the user should hear anything now. If so, "
+    "write it plainly as one message. If not, respond with exactly NO_REPLY."
 )
+
+# How much of what a job delivered is remembered for its next wake: enough
+# to know what was already said, not a transcript.
+RECENT_DELIVERIES_KEEP = 10
+RECENT_DELIVERIES_HOURS = 48
+RECENT_DELIVERY_CHARS = 500
 
 # How much of a job's prompt is recorded beside its delivered message. The
 # line is replayed on every later turn, so the whole prompt would be paid
@@ -969,19 +977,21 @@ def _record_delivery(
             store.close()
 
 
-def _resolve_heartbeat_gate(config: Config, job: CronJob) -> ModelConfig:
-    if job.model:
-        return config.resolve_model("cron_default", override=job.model)
-    if "heartbeat" in config.routing:
-        return config.resolve_model("heartbeat")
-    return config.resolve_model("cron_default")
+def _heartbeat_slot(config: Config, job: CronJob) -> str:
+    """The slot a heartbeat wake runs on: the job's own, else the
+    `heartbeat` route, else cron_default."""
+    return job.model or config.routing.get("heartbeat") or config.routing.get("cron_default", "main")
+
+
+def _resolve_heartbeat_model(config: Config, job: CronJob) -> ModelConfig:
+    return config.resolve_model("cron_default", override=_heartbeat_slot(config, job))
 
 
 def _refresh_triggers(workspace: Path, state_dir: Path | None) -> None:
     """Run the watchdog so triggers.json is current before it is read.
 
     Zero tokens: it is a local skill script. A missing or failing watchdog
-    leaves whatever triggers.json is already there, and the gate still runs.
+    leaves whatever triggers.json is already there, and the tick still runs.
     """
     from faffmonkey.runtime.skills import invoke as skill_invoke
 
@@ -1030,6 +1040,33 @@ def _heartbeat_skip_reason(config: Config, now: datetime) -> str | None:
     return None
 
 
+def _consume_triggers(workspace: Path, files: list) -> None:
+    """Delete the trigger files a wake was handed.
+
+    Called only after the agent turn returned, so a turn that raised keeps
+    its triggers for the retry.
+    """
+    triggers_dir = workspace / "skills-data" / "heartbeat" / "triggers.d"
+    for name in files:
+        if not isinstance(name, str) or not _SAFE_NAME_RE.match(name):
+            continue
+        try:
+            (triggers_dir / name).unlink()
+        except FileNotFoundError:
+            continue
+        except OSError as e:
+            logger.warning("could not remove trigger %s: %s", name, e)
+
+
+def _format_recent(recent: list[dict], config: Config) -> str:
+    lines = []
+    for entry in recent:
+        at = parse_timestamp(str(entry.get("at", "")), timezone.utc)
+        when = at.astimezone(config.timezone).strftime("%a %H:%M") if at else "?"
+        lines.append(f"- {when}: {entry.get('text', '')}")
+    return "\n".join(lines)
+
+
 def _run_heartbeat(
     job: CronJob,
     config: Config,
@@ -1037,23 +1074,27 @@ def _run_heartbeat(
     workspace: Path,
     state_dir: Path,
     now: datetime | None = None,
+    recent: list[dict] | None = None,
+    search_provider: SearchProvider | None = None,
 ) -> tuple[str, TokenUsage, str | None]:
+    """One heartbeat tick: the watchdog, then an agent turn only if it found
+    something. Returns (text, usage, skip_reason)."""
     skip = _heartbeat_skip_reason(config, now or datetime.now(timezone.utc))
     if skip is not None:
         return "", TokenUsage(), skip
 
     _refresh_triggers(workspace, state_dir)
-    triggers = _load_triggers(workspace)
-    has_attention = triggers is not None and triggers.get("status") == "attention"
-    logger.info(
-        "heartbeat watchdog: %s%s",
-        "attention" if has_attention else "clean",
-        f" ({'; '.join(triggers.get('triggers', []))})" if has_attention else "",
-    )
+    triggers = _load_triggers(workspace) or {}
+    trigger_lines = [
+        t for t in triggers.get("triggers", []) if isinstance(t, str) and t.strip()
+    ]
+    if triggers.get("status") != "attention" or not trigger_lines:
+        logger.info("heartbeat: clean")
+        return "", TokenUsage(), "clean"
+    logger.info("heartbeat: attention (%s)", "; ".join(trigger_lines))
 
     # The same symlink and case check the bootstrap applies to every
-    # always-trusted file. A test asserted it for HEARTBEAT.md against a
-    # bootstrap mode nothing called, while this path read the file bare.
+    # always-trusted file.
     heartbeat_read = read_and_check_trust("HEARTBEAT.md", workspace, {})
     if heartbeat_read is None:
         heartbeat_content = ""
@@ -1063,116 +1104,27 @@ def _run_heartbeat(
     else:
         heartbeat_content = heartbeat_read.content.strip()
 
-    if has_attention:
-        trigger_context = "\n".join(triggers.get("triggers", []))
-        # The cron bootstrap does not load HEARTBEAT.md, so this run was
-        # told to go through a file it had never seen: a missed morning
-        # produced the missed-morning message and nothing the checklist
-        # asked for every time.
-        checklist = f"\n\nHEARTBEAT.md:\n{heartbeat_content}" if heartbeat_content else ""
-        raw_prompt = (
-            (job.prompt or HEARTBEAT_GATE_PROMPT)
-            + checklist
-            + f"\n\nWatchdog triggers:\n{trigger_context}"
-        )
-        prompt = _clean_cron_prompt(raw_prompt, job.id)
-        if prompt is None:
-            raise RuntimeError(f"cron job {job.id!r} heartbeat prompt blocked by injection scan")
-        from faffmonkey.runtime.bootstrap import load_bootstrap
-        trust_store = load_trust_store(state_dir)
-        bootstrap = load_bootstrap(workspace, config, mode="cron", wrap=True, trust_store=trust_store)
-        model_config = config.resolve_model("cron_default", override=job.model)
-        messages: list[Message] = []
-        if bootstrap.text:
-            messages.append(Message(role="system", content=bootstrap.text))
-        messages.append(Message(role="user", content=prompt))
-        provider = resolve_provider(model_config)
-        request = CompletionRequest(messages=messages, model=model_config.model)
-        response = _complete_once_more_if_empty(
-            provider, request, model_config.timeout, "heartbeat escalation",
-        )
-        text, hb_usage = _ensure_plain_text(
-            provider, messages, model_config, response.text, response.usage,
-            job.id, allow_no_reply=True,
-        )
-        logger.info("heartbeat escalation answered %s", _describe_answer(text))
-        return text, hb_usage, None
-
-    if not heartbeat_content:
-        return "", TokenUsage(), "empty-heartbeat-file"
-
-    from faffmonkey.runtime.bootstrap import _format_time
-    time_str = _format_time(config.timezone)
-    # The checklist is framed, not just pasted: asked only "does anything
-    # need attention?", the gate answered NO_REPLY to a line that said
-    # "always report the current time", because nothing needed attention.
-    system_content = (
-        "You are the hourly heartbeat of a personal agent. Below is the "
-        "user's HEARTBEAT.md: things to watch for and standing instructions "
-        "for what to tell them. A line that tells you to report or say "
-        "something is acted on every time, whether or not anything else "
-        "needs attention. After it, the current time.\n\n"
-        f"{heartbeat_content}\n\n{time_str}"
-    )
-    # The gate is the cheap layer: it runs every heartbeat whether or not
-    # anything is happening, so it is routed separately from escalation.
-    model_config = _resolve_heartbeat_gate(config, job)
-    gate_prompt = _clean_cron_prompt(
-        job.prompt or HEARTBEAT_GATE_PROMPT,
-        job.id,
-    )
-    if gate_prompt is None:
-        raise RuntimeError(f"cron job {job.id!r} gate prompt blocked by injection scan")
-    messages = [
-        Message(role="system", content=system_content),
-        Message(role="user", content=gate_prompt),
+    sections = [job.prompt or HEARTBEAT_PROMPT]
+    sections.append("Triggers:\n" + "\n".join(f"- {t}" for t in trigger_lines))
+    readings = [
+        r for r in triggers.get("readings", []) if isinstance(r, str) and r.strip()
     ]
-    provider = resolve_provider(model_config)
-    request = CompletionRequest(messages=messages, model=model_config.model)
-    response = _complete_once_more_if_empty(
-        provider, request, model_config.timeout, "heartbeat gate",
-    )
-    gate_text = response.text
-    gate_usage = response.usage
-    logger.info("heartbeat gate answered %s", _describe_answer(gate_text))
+    if readings:
+        sections.append("Latest readings:\n" + "\n".join(f"- {r}" for r in readings))
+    if heartbeat_content:
+        sections.append(f"Standing instructions (HEARTBEAT.md):\n{heartbeat_content}")
+    if recent:
+        sections.append("Sent by the heartbeat recently:\n" + _format_recent(recent, config))
 
-    if not gate_text.strip() or _is_no_reply(gate_text):
-        return gate_text, gate_usage, None
-
-    from faffmonkey.runtime.bootstrap import load_bootstrap
-    trust_store = load_trust_store(state_dir)
-    bootstrap = load_bootstrap(workspace, config, mode="cron", wrap=True, trust_store=trust_store)
-    # Neutral framing: wrapping the gate's answer as "found something that
-    # needs attention" turned a one-line "the heartbeat ran" into an hourly
-    # themed monologue about checks the model cannot perform.
-    escalation_prompt = (
-        "The heartbeat gate reviewed the checklist and produced this:\n\n"
-        f"{gate_text}\n\n"
-        f"The checklist it was reading:\n{heartbeat_content}\n\n"
-        "Compose the message the user should receive. Deliver the substance "
-        "plainly. Do not dramatise it, do not pad it with status theatre, "
-        "and do not speculate about checks you cannot perform."
+    text, usage = _run_agent(
+        job, config, resolve_provider, workspace, state_dir,
+        search_provider=search_provider,
+        prompt="\n\n".join(sections),
+        slot=_heartbeat_slot(config, job),
     )
-    full_messages: list[Message] = []
-    if bootstrap.text:
-        full_messages.append(Message(role="system", content=bootstrap.text))
-    full_messages.append(Message(role="user", content=escalation_prompt))
-    # Escalation composes the message the operator reads, which is a
-    # different job from the gate's detection, so it resolves cron_default
-    # like the watchdog-triggered path above rather than reusing the gate.
-    escalation_mc = config.resolve_model("cron_default", override=job.model)
-    escalation_provider = resolve_provider(escalation_mc)
-    request = CompletionRequest(messages=full_messages, model=escalation_mc.model)
-    response = _complete_once_more_if_empty(
-        escalation_provider, request, escalation_mc.timeout, "heartbeat escalation",
-    )
-    text, esc_usage = _ensure_plain_text(
-        escalation_provider, full_messages, escalation_mc, response.text,
-        response.usage, job.id, allow_no_reply=True,
-    )
-    logger.info("heartbeat escalation answered %s", _describe_answer(text))
-    gate_usage = gate_usage + esc_usage
-    return text, gate_usage, None
+    _consume_triggers(workspace, triggers.get("files", []))
+    logger.info("heartbeat answered %s", _describe_answer(text))
+    return text, usage, None
 
 
 def _describe_answer(text: str) -> str:
@@ -1181,32 +1133,6 @@ def _describe_answer(text: str) -> str:
     if _is_no_reply(text):
         return "NO_REPLY"
     return f"{len(text)} chars"
-
-
-def _complete_once_more_if_empty(
-    provider: object, request: CompletionRequest, timeout: int, what: str,
-) -> CompletionResponse:
-    """One completion, repeated once with a nudge if it came back empty.
-
-    The chat loop already retries an empty response; the heartbeat did not,
-    so a model that answered with nothing (a reasoning model putting its
-    output in the wrong field, a hiccup) was recorded as a successful run
-    that had nothing to say, with no log line to show the difference.
-    """
-    response = _complete_with_timeout(provider, request, timeout=timeout)
-    if response.text.strip():
-        return response
-    logger.warning("%s returned an empty response from %s, asking once more", what, request.model)
-    nudged = CompletionRequest(
-        messages=[*request.messages, Message(
-            role="user",
-            content="Your reply was empty. Answer in plain text, or respond with exactly NO_REPLY.",
-        )],
-        model=request.model,
-    )
-    retry = _complete_with_timeout(provider, nudged, timeout=timeout)
-    retry.usage = response.usage + retry.usage
-    return retry
 
 
 # RLock: a channel loop holds it for a whole turn and the persist calls
@@ -1255,6 +1181,8 @@ def _run_agent(
     workspace: Path,
     state_dir: Path,
     search_provider: SearchProvider | None = None,
+    prompt: str | None = None,
+    slot: str | None = None,
 ) -> tuple[str, TokenUsage]:
     """One ephemeral tool-capable AgentLoop turn.
 
@@ -1262,6 +1190,9 @@ def _run_agent(
     in-memory history dies with the turn. Ask-level tool permissions are
     denied (no human present at cron time). The loop's existing budgets
     (tool calls, LLM round-trips, inactivity timeout) bound the turn.
+
+    `prompt` and `slot` override the job's own; the heartbeat assembles its
+    prompt from the watchdog's findings and runs on its own route.
     """
     from faffmonkey.runtime.bootstrap import load_bootstrap
     from faffmonkey.runtime.loop import AgentLoop
@@ -1270,7 +1201,7 @@ def _run_agent(
 
     # The loop resolves the conversation route; cron picks its own slot, so
     # it is passed in rather than routed for.
-    slot = job.model or config.routing.get("cron_default", "main")
+    slot = slot or job.model or config.routing.get("cron_default", "main")
 
     trust_store = load_trust_store(state_dir)
     bootstrap = load_bootstrap(workspace, config, mode="full", wrap=True, trust_store=trust_store)
@@ -1296,10 +1227,10 @@ def _run_agent(
         conversation_slot=slot,
         config_readonly=True,
     )
-    prompt = _clean_cron_prompt(job.prompt or "", job.id)
-    if prompt is None:
+    cleaned = _clean_cron_prompt(prompt if prompt is not None else (job.prompt or ""), job.id)
+    if cleaned is None:
         raise RuntimeError(f"cron job {job.id!r} prompt blocked by injection scan")
-    text = loop.handle_message(prompt)
+    text = loop.handle_message(cleaned)
     # The loop answers a person, so it turns "provider returned nothing" into
     # readable text. Delivered as a job result that reads as success.
     if loop.last_response_empty:
@@ -1428,6 +1359,9 @@ class Scheduler:
     history_dirty_events: dict[str, threading.Event] = field(default_factory=dict)
     _backoff: dict[str, BackoffState] = field(default_factory=dict)
     _last_fire: dict[str, datetime] = field(default_factory=dict)
+    # Per job, the last few delivered messages: what a heartbeat wake is
+    # told it already said.
+    _recent: dict[str, list[dict]] = field(default_factory=dict)
     _running: bool = False
     _stop_event: threading.Event = field(default_factory=threading.Event)
     _run_lock: threading.Lock = field(default_factory=threading.Lock)
@@ -1468,6 +1402,13 @@ class Scheduler:
             last = parse_timestamp(str(entry.get("last_fire", "")), timezone.utc)
             if last is not None:
                 self._last_fire[job_id] = last
+            recent = entry.get("recent")
+            if isinstance(recent, list):
+                self._recent[job_id] = [
+                    r for r in recent
+                    if isinstance(r, dict)
+                    and isinstance(r.get("at"), str) and isinstance(r.get("text"), str)
+                ][-RECENT_DELIVERIES_KEEP:]
             failures = entry.get("failure_count", 0)
             if not isinstance(failures, int) or failures <= 0:
                 continue
@@ -1498,6 +1439,14 @@ class Scheduler:
                 entry["next_retry_at"] = (
                     state.next_retry_at.isoformat(timespec="seconds").replace("+00:00", "Z")
                 )
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=RECENT_DELIVERIES_HOURS)
+        for job_id, entries in self._recent.items():
+            kept = [
+                e for e in entries
+                if (parse_timestamp(e["at"], timezone.utc) or cutoff) > cutoff
+            ]
+            if kept:
+                jobs.setdefault(job_id, {})["recent"] = kept
         try:
             self.state_dir.mkdir(parents=True, exist_ok=True)
             tmp = self._state_path.with_suffix(".json.tmp")
@@ -1555,6 +1504,12 @@ class Scheduler:
         for event in self.history_dirty_events.values():
             event.set()
 
+    def _remember_delivery(self, job_id: str, text: str) -> None:
+        entries = self._recent.setdefault(job_id, [])
+        entries.append({"at": utc_now_iso(), "text": text[:RECENT_DELIVERY_CHARS]})
+        del entries[:-RECENT_DELIVERIES_KEEP]
+        self._save_state()
+
     def note_activity(self, channel: str) -> None:
         """Remember where the user last spoke, for deliver.channel "last"."""
         if channel != self._last_channel:
@@ -1595,11 +1550,10 @@ class Scheduler:
         needs_provider = job.session in ("isolated", "main", "agent") or job.context == "heartbeat"
         if needs_provider:
             try:
-                # A heartbeat tick calls the gate first, and the gate routes
-                # through the "heartbeat" slot when one is configured, so that
-                # is the endpoint to probe, not cron_default's.
+                # A heartbeat wake routes through the "heartbeat" slot when
+                # one is configured, so that is the endpoint to probe.
                 if job.context == "heartbeat":
-                    model_config = _resolve_heartbeat_gate(self.config, job)
+                    model_config = _resolve_heartbeat_model(self.config, job)
                 else:
                     model_config = self.config.resolve_model("cron_default", override=job.model)
             except ConfigError as e:
@@ -1635,6 +1589,8 @@ class Scheduler:
                     job, self.config, self.resolve_provider,
                     self.workspace, self.state_dir,
                     now=datetime.now(self.config.timezone),
+                    recent=self._recent.get(job.id, []),
+                    search_provider=self.search_provider,
                 )
                 if skip_reason:
                     duration = int((time.monotonic() - start) * 1000)
@@ -1643,7 +1599,10 @@ class Scheduler:
                         status="skipped", duration_ms=duration,
                         error=skip_reason,
                     )
-                    _log_run(self.state_dir, run_log)
+                    # A clean tick is the normal case several times an hour;
+                    # a row for each would bury the wakes in the history.
+                    if skip_reason != "clean":
+                        _log_run(self.state_dir, run_log)
                     return run_log
             elif job.session == "isolated":
                 text, usage = _run_isolated(
@@ -1753,6 +1712,7 @@ class Scheduler:
                 send_error = f"delivery to {target!r} failed: {e}"
             else:
                 self._record_and_signal(job, delivered)
+                self._remember_delivery(job.id, delivered)
 
         # An announce job that produced output but could not deliver it has
         # not succeeded; recording it green hides an undelivered briefing.

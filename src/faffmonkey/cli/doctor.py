@@ -354,6 +354,14 @@ def _check_heartbeat(config: object, workspace_dir: Path) -> str:
             f"Enabled ({start:02d}:00-{end:02d}:00) but every heartbeat job is disabled",
         )
         return YELLOW
+    stale = [j for j in active if j.session != "agent"]
+    if stale:
+        _print_check(
+            "Heartbeat", YELLOW,
+            f"Job {stale[0].id!r} runs as {stale[0].session!r}; a heartbeat wake is an agent turn",
+            'Run "faff update" to rewrite the job, or set "session": "agent" on it',
+        )
+        return YELLOW
     schedules = ", ".join(j.schedule or f"at {j.at}" for j in active)
     _print_check(
         "Heartbeat", GREEN,

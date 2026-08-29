@@ -67,7 +67,17 @@ def run_status(state_dir: Path, workspace_dir: Path) -> None:
         print("Active goal: none")
     print()
 
-    # last heartbeat run
+    # Clean heartbeat ticks are not logged, so the log's last row is the
+    # last wake; the tick itself is the scheduler's last-fire time.
+    try:
+        cron_state = json.loads((state_dir / "cron-state.json").read_text())
+        last_tick = cron_state.get("jobs", {}).get("heartbeat", {}).get("last_fire")
+    except (json.JSONDecodeError, OSError, AttributeError):
+        last_tick = None
+    if isinstance(last_tick, str):
+        print(f"Last heartbeat tick: {render_timestamp(last_tick, config.timezone)}")
+    else:
+        print("Last heartbeat tick: none")
     heartbeat_log = state_dir / "logs" / "cron" / "heartbeat.jsonl"
     if heartbeat_log.exists():
         try:
@@ -76,13 +86,13 @@ def run_status(state_dir: Path, workspace_dir: Path) -> None:
                 last = json.loads(lines[-1])
                 ts = last.get("timestamp", "unknown")
                 status = last.get("status", "unknown")
-                print(f"Last heartbeat: {render_timestamp(ts, config.timezone)} [{redact(status)}]")
+                print(f"Last heartbeat wake: {render_timestamp(ts, config.timezone)} [{redact(status)}]")
             else:
-                print("Last heartbeat: no runs")
+                print("Last heartbeat wake: none")
         except (json.JSONDecodeError, OSError):
-            print("Last heartbeat: (error reading log)")
+            print("Last heartbeat wake: (error reading log)")
     else:
-        print("Last heartbeat: no runs")
+        print("Last heartbeat wake: none")
     print()
 
     # last 10 cron runs (across all job logs)

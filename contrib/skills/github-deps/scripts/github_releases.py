@@ -42,7 +42,7 @@ SKILL_DATA = os.environ.get(
 REPOS_FILE = os.path.join(SKILL_DATA, "repos.json")
 LEGACY_REPOS_FILE = os.path.join(WORKSPACE, "config", "repos.json")
 
-USER_AGENT = "faffmonkey/0.1.0"
+USER_AGENT = "faffmonkey"
 
 # Atom namespace
 ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}

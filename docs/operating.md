@@ -125,7 +125,7 @@ The first channel wizard creates four jobs, the day's skeleton:
 
 | Job | When | What |
 |---|---|---|
-| `heartbeat` | hourly | Checks `HEARTBEAT.md`, speaks only if there is something to say (below) |
+| `heartbeat` | every 5 min | Runs the watchdog; wakes the agent only when a sensor or health check dropped a trigger (below) |
 | `morning` | 07:05 | Runs the morning-routine skill: carry-over, preconscious buffer, overnight skill output, a greeting |
 | `evening` | 22:00 | Reviews the day inside the live conversation, then the memory flush writes `MEMORY.md`, today's daily log and person/project files, and the session starts fresh |
 | `preconscious-decay` | 06:01 | Runs the preconscious skill's decay script with no model call, so the top-of-mind buffer fades as designed; delivers nothing |
@@ -156,35 +156,60 @@ Behaviour worth knowing:
 
 ## Heartbeat
 
-The heartbeat is one cron job (`id: heartbeat`, hourly, `context:
-"heartbeat"`) that the first channel wizard creates alongside `morning`,
-`evening` and `preconscious-decay`. It is a check, not a ping: every hour it reads
-`workspace/HEARTBEAT.md` and only messages you when there is something
-to say.
+The heartbeat is one cron job (`id: heartbeat`, every five minutes,
+`context: "heartbeat"`) that the first channel wizard creates alongside
+`morning`, `evening` and `preconscious-decay`. It costs nothing while
+nothing is happening: a script decides whether to wake the agent, and
+the agent decides what to say.
 
 What happens on a tick, in order:
 
 1. Skipped if `heartbeat.enabled` is false or the hour is outside
    `heartbeat.active_hours` (both in `state/config.json`). Recorded as
    `skipped` with the reason.
-2. The watchdog script runs (no model call). If it flags something
-   (a missed morning, LEARNINGS.md over its threshold; each at most
-   once a day), the agent gets a full run with that context.
-3. Otherwise, if `HEARTBEAT.md` is missing or empty, the tick ends
-   with no model call and nothing sent.
-4. Otherwise the `heartbeat` route (default slot `cheap`) is asked
-   whether anything in `HEARTBEAT.md` needs attention. `NO_REPLY` ends
-   the tick. Anything else is handed to the `cron_default` route
-   (default `main`) to compose the message, which is delivered to the
-   job's `deliver.channel`.
+2. The watchdog script runs (no model call): its own health checks (a
+   missed morning, LEARNINGS.md over its threshold, each at most once a
+   day), then every trigger a sensor has dropped in
+   `workspace/skills-data/heartbeat/triggers.d/` and the latest line of
+   every `workspace/readings/*.jsonl`.
+3. No triggers: the tick ends. Nothing is logged, so `faff cron history
+   heartbeat` lists only wakes and errors; `faff status` shows the last
+   tick separately.
+4. Triggers: one agent turn with tools on the `heartbeat` model route
+   (default slot `cheap`). It is given the triggers, the readings,
+   `workspace/HEARTBEAT.md` as standing instructions, and what the
+   heartbeat sent in the last two days, and replies with one message,
+   delivered to the job's `deliver.channel`, or `NO_REPLY`. The triggers
+   it saw are then deleted.
 
-No step has tools. The gate and the composing call see `HEARTBEAT.md`,
-the current time and the watchdog triggers, nothing else.
+`HEARTBEAT.md` is where your preferences go, in plain English: when to
+speak, when to stay quiet, "I don't run above 32C". It is read only on
+a wake, so it costs nothing while quiet.
+
+### Watching something
+
+"Warn me when the AQI passes 180", "tell me before it rains": these are
+sensors, which are skills with a `run` script on a `session: "none"`
+cron job. Each run records a reading and drops a trigger when its rule
+fires (a threshold you set, something new since last time, something
+due); the heartbeat wakes the agent with the reading and your standing
+instructions, and the agent decides whether and how to tell you. The
+contrib `aqi` and `weather` skills ship as sensors; their HUMAN.md
+files show the job and the settings. Ask the agent and it sets the
+threshold and the job up itself.
+
+Reminders keep delivering themselves on time, and each one also drops a
+trigger, so the next wake can add "35C and rain by four, skip the run"
+when the readings argue with what you planned.
+
+For a scheduled look-around with no sensor involved, schedule the
+heartbeat skill's `poke` action (its HUMAN.md shows the job); three a
+day is a reasonable default.
 
 So "the heartbeat never messages me" is usually one of:
 
-- **Empty HEARTBEAT.md.** Put the checks you want in it; only ones
-  answerable from the file and the clock (see below).
+- **No sensors and no pokes.** Nothing wakes it. Set up a sensor job or
+  a scheduled poke.
 - **Wrong channel.** A wizard-created job delivers to `last`, the
   channel you most recently sent a direct message on; a job that names
   a channel delivers there. Check with `faff cron list`; change it by
@@ -192,30 +217,16 @@ So "the heartbeat never messages me" is usually one of:
   "announce", "channel": "last"}}'` or editing `jobs.json`.
 - **Outside active hours.** `faff cron history heartbeat` shows
   `skipped outside-active-hours`.
-- **The gate said NO_REPLY.** `faff cron run heartbeat` shows exactly
-  what the gate answered. A job keeps the prompt it was created with;
-  `faff cron list` shows it. The current default tells the gate that a
-  line asking it to report something is acted on every time. If yours
-  reads "Check HEARTBEAT.md items. If nothing needs attention, respond
-  with NO_REPLY", a standing instruction reads as nothing needing
-  attention. Replace it:
+- **The wake said NO_REPLY.** `faff cron run heartbeat` shows what the
+  wake answered. A job created before 0.2.0 still runs the old
+  tool-less gate over a checklist; `faff update` rewrites it, or set
+  `"session": "agent"` on it yourself.
+- **`faff run` is not up.** No tick in `faff status` since the last
+  start means the scheduler never ran.
 
-  ```
-  /skill cron-manager update heartbeat {"prompt": "Go through HEARTBEAT.md. If any line asks you to report something now, or anything on it needs attention, write what the user should hear. Only if there is nothing to say, respond with exactly NO_REPLY."}
-  ```
-
-- **`faff run` is not up.** No rows in `faff cron history heartbeat`
-  since the last start means the scheduler never reached a tick.
-
-The agent can edit `HEARTBEAT.md` itself, so "keep an eye on X" in
-conversation is enough to add a line, provided X is answerable from the
-file and the clock. Air quality, weather, a price, an inbox: the
-heartbeat cannot check any of these, and a line about them is either
-guessed at or answered `NO_REPLY`. For those the agent sets up a cron
-job instead: a `session: "none"` job on a skill whose `run` script
-prints `NO_REPLY` or the message, which costs nothing while quiet. The
-contrib `reminders` skill is the shipped example, and the heartbeat
-skill's `HUMAN.md` describes writing one.
+The agent can edit `HEARTBEAT.md` itself, so "don't warn me about the
+AQI twice in a day" in conversation is enough to add a line. Anything
+that needs checking is a sensor job, which it can also set up.
 
 ## Identity files and memory
 

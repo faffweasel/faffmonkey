@@ -411,7 +411,7 @@ Sunday) or `at` (one-shot, deleted on success only); `prompt` or
 `skill`; `session`; `model` slot override; `deliver` (`announce` to a
 channel, or `none`); `enabled`; `rotate_session` (main only: flush
 memory and rotate the session after the run); `context: "heartbeat"`
-for the two-layer heartbeat pattern.
+for the heartbeat tick (below).
 
 Jobs are validated as whole shapes, not field by field: `enabled` and
 `rotate_session` must be real booleans (the string `"false"` is truthy
@@ -499,48 +499,101 @@ job boundary once shutdown is signalled.
 
 ### Heartbeat
 
-One cron job, three cost tiers. The first channel wizard (`faff setup
-telegram` or `discord`) creates it, hourly and delivering to `last`,
-alongside the `morning` (07:05, agent session, morning-routine skill)
-and `evening` (22:00, main session, `rotate_session`) jobs, plus a
-silent `preconscious-decay` pass (06:01, `session: "none"`, the skill's
-daily decay script), whichever of the four are missing; `faff init`
-cannot, because there is no channel to deliver to yet. The evening job's
-own turn has no tools: it leaves a note of what mattered in the history,
-and the memory flush inside rotation is what writes the files. A
-no-tools completion (isolated, main, heartbeat escalation) that emits
-tool-call syntax as text is re-prompted once and errors rather than
-delivering raw XML to the channel.
+One cron job (`id: heartbeat`, `context: "heartbeat"`, every five
+minutes by default) that costs nothing while nothing is happening:
+scripts decide whether to wake the model, and the model decides what to
+say. The first channel wizard (`faff setup telegram` or `discord`)
+creates it, delivering to `last`, alongside the `morning` (07:05, agent
+session, morning-routine skill) and `evening` (22:00, main session,
+`rotate_session`) jobs, plus a silent `preconscious-decay` pass (06:01,
+`session: "none"`, the skill's daily decay script), whichever of the
+four are missing; `faff init` cannot, because there is no channel to
+deliver to yet. The evening job's own turn has no tools: it leaves a
+note of what mattered in the history, and the memory flush inside
+rotation is what writes the files. A no-tools completion (isolated,
+main) that emits tool-call syntax as text is re-prompted once and
+errors rather than delivering raw XML to the channel.
 
-A `context: "heartbeat"` run first invokes the heartbeat skill's
-watchdog (zero tokens: file existence, timestamps and thresholds,
-written to `skills-data/heartbeat/triggers.json`), then reads it.
-`HEARTBEAT.md` is read through the same always-trusted check as the
-bootstrap files: a symlink or a case-mismatched name is ignored with a
-warning. On `attention` the run skips straight to a full completion on
-`cron_default` with the trigger context and HEARTBEAT.md in the prompt
-(the cron bootstrap does not load the file). Otherwise a cheap gate on
-the `heartbeat` route evaluates HEARTBEAT.md (~100 tokens; `NO_REPLY`
-ends the run); its system prompt frames the file as things to watch
-plus standing instructions that are acted on every time. A substantive
-gate answer escalates to `cron_default`, which is asked to compose what
-the user should hear, plainly, not to raise an alert. Missing or empty
-HEARTBEAT.md means no model call at all.
+A tick, in order:
 
-No step of the heartbeat has tools. The gate and escalation see
-HEARTBEAT.md, the current time and the triggers, so the file holds only
-checks answerable from those. A watch that needs a tool or the web is a
-`session: "none"` job on a skill whose `run` script prints `NO_REPLY`
-or the message (see the session modes above); the heartbeat and
-cron-manager skills tell the agent so. The watchdog has two triggers,
-`morning_missed` and `learnings_full`, each raised once per day
-(`reported.json`).
+1. Skipped when `heartbeat.enabled` is false or the hour is outside
+   `heartbeat.active_hours`, recorded as a skipped run with the reason.
+2. The watchdog runs: the heartbeat skill's `run` script, zero tokens.
+   It performs its health checks (yesterday's daily file exists,
+   otherwise it is created; the morning routine ran before its
+   deadline; LEARNINGS.md is under its entry threshold; the last two
+   raised once a day via `reported.json`), collects every trigger file
+   in `skills-data/heartbeat/triggers.d/` and the last line of every
+   `workspace/readings/*.jsonl`, and writes
+   `skills-data/heartbeat/triggers.json`: `status` (`clean` or
+   `attention`), `triggers` (one line each), `files` (the tray entries
+   it included), `readings` (one line each: source, age, summary) and
+   `fixed`. Its only decision is whether the trigger list is empty.
+3. `clean`: the tick ends. No model call and no run-log row, so
+   `faff cron history heartbeat` lists wakes and errors only; `faff
+   status` reports the last tick from the scheduler's last-fire time.
+4. `attention`: one agent turn (`_run_agent`: tools, fresh context,
+   ask-level permissions denied) on the `heartbeat` route when one is
+   configured, else `cron_default`, with the job's `model` overriding
+   both. The prompt is the job's prompt (default `HEARTBEAT_PROMPT`),
+   then the triggers, the readings, `HEARTBEAT.md` as standing
+   instructions (read through the always-trusted check, so a symlink or
+   a case mismatch is ignored with a warning), and the heartbeat's own
+   recent deliveries. The answer is delivered unless it is `NO_REPLY`.
+   The trigger files handed over are then deleted; a turn that raised
+   keeps them for the retry, and file names outside the job-id
+   character set are never touched.
 
-The watchdog runs inline rather than as its own cron job, so it cannot
-drift out of step with the heartbeat that reads it. The gate is routed by `heartbeat` and escalation by
-`cron_default`, because detecting that something is worth saying and
-composing what to say are different jobs, and only the gate runs on
-every heartbeat.
+`HEARTBEAT.md` is standing instructions, read only on a wake: how to
+weigh what the sensors found and when to stay quiet. Nothing evaluates
+it on its own, and an empty file changes nothing.
+
+**Triggers.** A sensor drops
+`skills-data/heartbeat/triggers.d/<source>-<key>.json` containing
+`at`, `source`, `kind` and `text`. `kind` is `alert` (a line was
+crossed), `occasion` (something is due) or `new` (something appeared);
+`text` is the line the model reads and the only required field. The
+file stem stands in for a missing `source` and an unknown `kind` reads
+as `alert`. Writing the same key again replaces the earlier file. The
+heartbeat skill's `poke` action drops an `occasion` trigger by hand;
+scheduled at fixed times, that is the "look around" wake, the one
+place a model runs on a timetable rather than because a script found
+something.
+
+**Readings.** A sensor appends one JSON line per run to
+`workspace/readings/<source>.jsonl`: `at`, `summary` (one line the
+model reads as-is) and `data` (a few fields worth comparing). The last
+line is the latest; sensors keep about seven days. The directory is
+inside the workspace so the agent can `file_read` it for history. This
+is the one place observations of the world live; a skill's own
+`skills-data/` directory holds its state, not its readings.
+
+**Sensors.** A sensor is a skill's `run` script on a `session: "none"`
+job with `deliver: none`, on whatever cadence the thing deserves. It
+fetches, appends a reading, applies a rule against its own state in
+`skills-data/<skill>/` (a threshold from `config.json`, ids already
+seen, the last known condition) and drops a trigger when the rule
+fires, writing its state before the trigger so a failed wake cannot
+re-alert every tick. The rules are deterministic on purpose: crossed a
+number, not seen before, now due. Whether a finding matters is judged
+on the wake, where the context is. The contrib `aqi` (threshold, once a
+day) and `weather` (rain within the lookahead, once per dry-to-wet
+transition) skills are the shipped sensors. `reminders` delivers each
+reminder itself, on its own five-minute job, and also drops an
+`occasion` trigger so the wake can add advice if the readings argue
+with what was planned.
+
+**Recent deliveries.** The scheduler keeps, per job in
+`state/cron-state.json` (`recent`: `at`, `text` cut to 500 characters;
+the last ten within two days), every message it delivered, recorded
+after the send succeeded. The heartbeat's wake prompt includes its
+own, so "already told them" is evidence in front of the model rather
+than something it would have to remember across turns it never sees.
+
+The watchdog runs inline rather than as its own cron job: it cannot
+drift out of step with the tick that reads it, and a separate run would
+consume that day's once-a-day health-check triggers before the tick
+saw them.
 
 ## Memory
 

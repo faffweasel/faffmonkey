@@ -113,8 +113,8 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="agent-mode-empty-is-success",
         path="src/faffmonkey/runtime/scheduler.py",
-        old="    text = loop.handle_message(prompt)\n    # The loop answers a person, so it turns \"provider returned nothing\" into\n    # readable text. Delivered as a job result that reads as success.\n    if loop.last_response_empty:\n        return \"\", loop.usage_total",
-        new='    text = loop.handle_message(prompt)',
+        old="    text = loop.handle_message(cleaned)\n    # The loop answers a person, so it turns \"provider returned nothing\" into\n    # readable text. Delivered as a job result that reads as success.\n    if loop.last_response_empty:\n        return \"\", loop.usage_total",
+        new='    text = loop.handle_message(cleaned)',
         why="A dead provider is logged as a successful run and never backs off.",
     ),
     Mutation(
@@ -125,11 +125,25 @@ MUTATIONS: list[Mutation] = [
         why="The heartbeat reads yesterday's triggers.",
     ),
     Mutation(
-        name="heartbeat-escalates-on-gate-model",
+        name="heartbeat-wakes-on-clean",
         path="src/faffmonkey/runtime/scheduler.py",
-        old='    escalation_mc = config.resolve_model("cron_default", override=job.model)',
-        new="    escalation_mc = model_config",
-        why="The message you read is composed by the cheap gate model.",
+        old='    if triggers.get("status") != "attention" or not trigger_lines:\n        logger.info("heartbeat: clean")\n        return "", TokenUsage(), "clean"',
+        new='    if False:\n        logger.info("heartbeat: clean")\n        return "", TokenUsage(), "clean"',
+        why="A quiet tick costs an agent turn every five minutes.",
+    ),
+    Mutation(
+        name="heartbeat-forgets-to-consume-triggers",
+        path="src/faffmonkey/runtime/scheduler.py",
+        old='    _consume_triggers(workspace, triggers.get("files", []))',
+        new="    pass",
+        why="Every trigger wakes the agent on every tick until someone deletes the file.",
+    ),
+    Mutation(
+        name="heartbeat-hides-recent-deliveries",
+        path="src/faffmonkey/runtime/scheduler.py",
+        old='    if recent:\n        sections.append("Sent by the heartbeat recently:\\n" + _format_recent(recent, config))',
+        new='    if False:\n        sections.append("Sent by the heartbeat recently:\\n" + _format_recent(recent, config))',
+        why="The wake cannot know what it already said, so it says it again.",
     ),
     # -- setup wizards --
     Mutation(

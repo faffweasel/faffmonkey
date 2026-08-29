@@ -16,7 +16,7 @@ WORKSPACE = os.environ.get("WORKSPACE", "")
 if not WORKSPACE:
     WORKSPACE = os.path.dirname(os.path.dirname(SKILL_DIR))
 
-USER_AGENT = "faffmonkey/0.1.0"
+USER_AGENT = "faffmonkey"
 API_BASE = "https://api.venice.ai/api/v1"
 
 

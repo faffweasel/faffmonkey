@@ -18,7 +18,7 @@ from faffmonkey.config import (
     validate_base_url,
     write_json_object,
 )
-from faffmonkey.runtime.scheduler import HEARTBEAT_GATE_PROMPT, LAST_CHANNEL
+from faffmonkey.runtime.scheduler import HEARTBEAT_PROMPT, LAST_CHANNEL
 from faffmonkey.runtime.redaction import redact
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
@@ -325,12 +325,15 @@ def _append_env_var(env_path: Path, key: str, value: str) -> None:
         raise
 
 
+# Every five minutes because a quiet tick costs nothing (the watchdog is a
+# script) and the wake has to be prompt enough to comment on a reminder
+# that just went out.
 HEARTBEAT_JOB = {
     "id": "heartbeat",
-    "schedule": "0 * * * *",
-    "prompt": HEARTBEAT_GATE_PROMPT,
+    "schedule": "*/5 * * * *",
+    "prompt": HEARTBEAT_PROMPT,
     "context": "heartbeat",
-    "session": "isolated",
+    "session": "agent",
     "model": "cheap",
     "deliver": {"mode": "announce", "channel": LAST_CHANNEL},
 }
@@ -422,7 +425,7 @@ def ensure_default_jobs(workspace: Path) -> None:
     jobs_path.parent.mkdir(parents=True, exist_ok=True)
     jobs_path.write_text(json.dumps(jobs, indent=2) + "\n")
     print(
-        f"  Added to {jobs_path}: {', '.join(added)} (heartbeat hourly, morning "
+        f"  Added to {jobs_path}: {', '.join(added)} (heartbeat every five minutes, morning "
         f"07:05, evening 22:00, preconscious decay 06:01; announcements go "
         f"to the channel you last used)"
     )

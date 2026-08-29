@@ -2,7 +2,7 @@
 name: aqi
 description: Air quality lookups with station selection, multi-station aggregation, and per-pollutant breakdown. Use for any question about air quality, AQI, pollution, or whether outdoor activity is advisable.
 metadata: '{"faffmonkey":{"requires":{"env":["AQICN_API_KEY"]}}}'
-actions: aqi
+actions: aqi, run
 ---
 
 ## When to use
@@ -31,6 +31,16 @@ aqi unpin               clear the pin
 **Use `aqi current` whenever the user asks about air quality without naming a place or station**, including in the morning briefing. Nearby stations can disagree wildly (one reading 4 while the next reads 101), so once the user has chosen one, that is the answer; `multi` averages the outliers in. When the user says which station they trust, `aqi pin <uid>` records it in this skill's data directory and it survives restarts.
 
 `multi` reads the location from `config/location.json`; if it errors with "No location configured", tell the user to set that file up (see HUMAN.md). `hanoi-multi` is an alias for `multi`.
+
+## Watching the AQI
+
+"Tell me if the AQI goes above 180" is the sensor, not a HEARTBEAT.md line. Write the threshold into this skill's config (`skills-data/aqi/config.json`, the file the station pin lives in) as `{"watch_threshold": 180}` with `file_write`, and make sure an hourly sensor job exists via cron-manager:
+
+```
+add '{"id": "aqi-sensor", "schedule": "0 * * * *", "skill": "aqi", "session": "none", "deliver": {"mode": "none"}}'
+```
+
+The `run` action then appends each reading to `readings/aqi.jsonl` and drops a heartbeat trigger the first time a day the AQI is above the threshold; the heartbeat wakes you with it. Do not invoke `run` in conversation; `aqi current` is the answer to "what's the air like".
 
 ## Morning briefing
 

@@ -8,8 +8,8 @@ Usage:
   weather.py tomorrow [city]   — tomorrow only
   weather.py advice [city]     — current + today, structured for agent advice
 
-Default city comes from workspace/config/location.json. Responses are cached
-in skills-data/weather/cache.json for 15 minutes.
+Default city comes from workspace/config/location.json. run.py is the
+sensor entry point for cron; it appends readings to workspace/readings/.
 
 Requires OPENWEATHERMAP_API_KEY. Data: OpenWeatherMap (ODbL).
 """
@@ -32,12 +32,10 @@ if not WORKSPACE:
 SKILL_DATA = os.environ.get(
     "SKILL_DATA", os.path.join(WORKSPACE, "skills-data", "weather"),
 )
-CACHE_FILE = Path(SKILL_DATA) / "cache.json"
-CACHE_TTL_SECONDS = 15 * 60
 
 API_KEY = os.environ.get("OPENWEATHERMAP_API_KEY", "")
 BASE = "https://api.openweathermap.org"
-USER_AGENT = "faffmonkey/0.1.0"
+USER_AGENT = "faffmonkey"
 
 ATTRIBUTION = "Data: OpenWeatherMap"
 
@@ -68,43 +66,12 @@ def _load_location():
     return float(lat), float(lng), loc.get("city", "configured location")
 
 
-def _read_cache() -> dict:
-    try:
-        return json.loads(CACHE_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
-def cache_get(key: str):
-    entry = _read_cache().get(key)
-    if not entry:
-        return None
-    if time.time() - entry.get("fetched_at", 0) > CACHE_TTL_SECONDS:
-        return None
-    return entry.get("data")
-
-
-def cache_put(key: str, data) -> None:
-    cache = {
-        k: v for k, v in _read_cache().items()
-        if time.time() - v.get("fetched_at", 0) <= CACHE_TTL_SECONDS
-    }
-    cache[key] = {"fetched_at": time.time(), "data": data}
-    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    CACHE_FILE.write_text(json.dumps(cache), encoding="utf-8")
-
-
 def _fetch(path: str, params: dict) -> dict:
     if not API_KEY:
         print("Error: OPENWEATHERMAP_API_KEY not set (see HUMAN.md)", file=sys.stderr)
         sys.exit(2)
     params = {**params, "appid": API_KEY}
     url = f"{BASE}{path}?{urllib.parse.urlencode(params)}"
-    cache_key = f"{path}?{urllib.parse.urlencode({k: v for k, v in params.items() if k != 'appid'})}"
-
-    cached = cache_get(cache_key)
-    if cached is not None:
-        return cached
 
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
@@ -120,7 +87,6 @@ def _fetch(path: str, params: dict) -> dict:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    cache_put(cache_key, data)
     return data
 
 

@@ -10,7 +10,7 @@ Use when the user expresses scheduling intent: "every morning", "remind me on Tu
 
 Do not use for running jobs manually; that is `faff cron run <jobId>` on the host.
 
-**Cron vs heartbeat:** the heartbeat has no tools; it reads HEARTBEAT.md and the clock, nothing else. A line answerable from those (a standing instruction, a reminder inside a time window) goes in HEARTBEAT.md. Everything else is cron: tasks at a fixed time ("7am briefing", "Friday wrap-up"), and any watch that needs a tool or the web ("tell me if the AQI goes above 180", "warn me before it rains"). A watch is a `session: "none"` job on a skill whose `run` script prints `NO_REPLY` or the message, zero tokens while quiet (see the watch example below); use `session: "agent"` only if the finding needs composing.
+**Cron vs heartbeat:** tasks at a fixed time ("7am briefing", "Friday wrap-up", "remind me at 4") are cron jobs. Watches ("tell me if the AQI goes above 180", "warn me before it rains") are sensor jobs: a `session: "none"` job on a skill with a `run` script that records readings and drops a trigger for the heartbeat when its rule fires; the heartbeat then wakes you with the reading to decide what to say. Set the sensor's threshold in its own config (its SKILL.md says where) and add the job (see the sensor example below). How to weigh things and when to stay quiet go in HEARTBEAT.md, not here.
 
 ## Actions
 
@@ -46,7 +46,7 @@ disable daily-summary
 enable daily-summary
 ```
 
-**history**, the last runs of a job, newest first, with status, duration and the reason for any skip or error. Optional limit, default 10, max 50. The scheduler runs inside the same process as this conversation, so no rows means the job has never come due since the agent started; `skipped` rows name the cause (`outside-active-hours`, `heartbeat-disabled`, `empty-heartbeat-file`); `success` with nothing delivered means the job produced no output or answered NO_REPLY:
+**history**, the last runs of a job, newest first, with status, duration and the reason for any skip or error. Optional limit, default 10, max 50. The scheduler runs inside the same process as this conversation, so no rows means the job has never come due since the agent started; `skipped` rows name the cause (`outside-active-hours`, `heartbeat-disabled`); `success` with nothing delivered means the job produced no output or answered NO_REPLY. A heartbeat tick with nothing to wake for writes no row at all, so the heartbeat's history is its wakes:
 
 ```
 history heartbeat
@@ -63,7 +63,7 @@ history heartbeat 25
 | `prompt` | One of `prompt`/`skill` | | Instruction for the agent. Required for `isolated`, `main`, and `agent` sessions. |
 | `skill` | One of `prompt`/`skill` | | Skill to run directly. Required for `none` sessions. The skill must have a `run` script; that is what a `none` session executes. |
 | `session` | No | `agent` | See session modes below. Set it explicitly: the default is tool-capable and costs more than `isolated`. The `main` session is the one live conversation shared by every channel. |
-| `context` | No | (none) | Set to `"heartbeat"` for the two-layer heartbeat pattern: reads the watchdog triggers file, runs a cheap gate over HEARTBEAT.md, and only escalates on a substantive finding. See the heartbeat skill. |
+| `context` | No | (none) | `"heartbeat"` for the heartbeat job: runs the watchdog first and only wakes the agent (an `agent` turn) when it found a trigger. One such job exists; do not add another. See the heartbeat skill. |
 | `model` | No | `routing.cron_default` | Any model slot configured in `state/config.json`, commonly `main` or `cheap`. Slots are user-defined, so this is not a fixed list. Ignored for `none`. |
 | `deliver` | No | `{"mode": "announce"}` | See delivery modes below. |
 | `enabled` | No | `true` | Set `false` to disable without deleting. |
@@ -76,7 +76,7 @@ history heartbeat 25
 | `isolated` | Fresh context, cron bootstrap, single completion. No tools. | Independent runs: summaries, checks, reminders. |
 | `main` | Runs in the active main session with full conversation context. No tools. Output appears in the conversation. | Jobs that must reference the ongoing conversation. |
 | `agent` | Ephemeral tool-capable session: can invoke skills, read and write files, run shell. Fresh context, nothing persisted, permission prompts auto-denied, standard loop budgets apply. `model` routes the whole turn. | Default. Any job that needs tools or skill invocation: composing from skill output, writing files, multi-step work. |
-| `none` | No agent, no LLM call. Runs the skill's `run` script directly via subprocess. Zero tokens. Fails if the skill has no `run` script. With `announce`, the script's output is the message; `NO_REPLY` sends nothing. | Watchdogs, data collection, and watches whose message the script can write itself. |
+| `none` | No agent, no LLM call. Runs the skill's `run` script directly via subprocess. Zero tokens. Fails if the skill has no `run` script. With `announce`, the script's output is the message; `NO_REPLY` sends nothing. | Sensors, reminders, decay and indexing scripts. |
 
 Only `agent` can use tools. If the prompt asks the agent to invoke a skill or touch files, the session must be `agent`; in `isolated` or `main` it will have no tools and can only answer from context.
 
@@ -111,7 +111,13 @@ Tool-capable job (agent session, invokes skills):
 add '{"id": "morning-weather", "schedule": "0 7 * * *", "prompt": "Run weather advice and fold anything notable into a short greeting.", "session": "agent", "model": "cheap", "deliver": {"mode": "announce", "channel": "telegram"}}'
 ```
 
-Watch (no LLM; the skill's `run` script prints `NO_REPLY` or the message, and only the message is delivered):
+Sensor (no LLM; the skill's `run` script records a reading and drops a heartbeat trigger when its rule fires; the heartbeat does the talking):
+
+```
+add '{"id": "aqi-sensor", "schedule": "0 * * * *", "skill": "aqi", "session": "none", "deliver": {"mode": "none"}}'
+```
+
+Reminders (no LLM; the script prints `NO_REPLY` or the reminder, and only the reminder is delivered):
 
 ```
 add '{"id": "reminder-check", "schedule": "*/5 * * * *", "skill": "reminders", "session": "none", "deliver": {"mode": "announce", "channel": "last"}}'

@@ -13,7 +13,7 @@ import urllib.error
 import urllib.request
 
 BASE_URL = "https://open.er-api.com/v6"
-USER_AGENT = "faffmonkey/0.1.0"
+USER_AGENT = "faffmonkey"
 
 # Default targets for rate display
 DEFAULT_TARGETS = ["USD", "EUR", "GBP", "JPY", "VND", "THB", "HKD", "SGD", "AUD", "TWD"]

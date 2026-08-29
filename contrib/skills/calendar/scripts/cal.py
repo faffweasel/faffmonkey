@@ -52,7 +52,7 @@ SKILL_DATA = Path(os.environ.get(
 CONFIG_FILE = SKILL_DATA / "calendars.json"
 LEGACY_CONFIG_FILE = Path(WORKSPACE) / "config" / "calendars.json"
 
-USER_AGENT = "faffmonkey/0.1.0"
+USER_AGENT = "faffmonkey"
 _MAX_ICS_BYTES = 10 * 1024 * 1024
 _MAX_RRULE_ITERATIONS = 1000
 

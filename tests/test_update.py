@@ -843,3 +843,101 @@ class TestDataRootMigration:
 
         assert run_update(root) == 0
         assert (legacy / "state" / "config.json").is_file()
+
+
+class TestMigrateHeartbeat:
+    """0.2.0 turned the heartbeat from a tool-less hourly gate into an agent
+    wake every five minutes. An installed job still in the old shape is
+    rewritten; one the operator changed is left alone."""
+
+    def _workspace(self, tmp_path, job):
+        workspace = tmp_path / "workspace"
+        (workspace / "config").mkdir(parents=True)
+        (workspace / "config" / "jobs.json").write_text(json.dumps([job]))
+        return workspace
+
+    def _jobs(self, workspace):
+        return json.loads((workspace / "config" / "jobs.json").read_text())
+
+    def test_old_wizard_job_is_rewritten(self, tmp_path, capsys):
+        from faffmonkey.cli.update import _migrate_heartbeat_job
+        from faffmonkey.runtime.scheduler import HEARTBEAT_PROMPT
+        workspace = self._workspace(tmp_path, {
+            "id": "heartbeat", "schedule": "0 * * * *", "context": "heartbeat",
+            "session": "isolated", "model": "cheap",
+            "prompt": "Check HEARTBEAT.md items. If nothing needs attention, respond with NO_REPLY",
+            "deliver": {"mode": "announce", "channel": "last"},
+        })
+
+        _migrate_heartbeat_job(workspace)
+
+        job = self._jobs(workspace)[0]
+        assert job["session"] == "agent"
+        assert job["schedule"] == "*/5 * * * *"
+        assert job["prompt"] == HEARTBEAT_PROMPT
+        assert job["deliver"] == {"mode": "announce", "channel": "last"}
+        assert "rewrote heartbeat" in capsys.readouterr().out
+
+    def test_operator_prompt_and_schedule_are_kept(self, tmp_path):
+        from faffmonkey.cli.update import _migrate_heartbeat_job
+        workspace = self._workspace(tmp_path, {
+            "id": "heartbeat", "schedule": "*/30 * * * *", "context": "heartbeat",
+            "session": "isolated", "prompt": "Be terse.",
+        })
+
+        _migrate_heartbeat_job(workspace)
+
+        job = self._jobs(workspace)[0]
+        assert job["session"] == "agent"
+        assert job["schedule"] == "*/30 * * * *"
+        assert job["prompt"] == "Be terse."
+
+    def test_agent_job_is_untouched(self, tmp_path, capsys):
+        from faffmonkey.cli.update import _migrate_heartbeat_job
+        original = {"id": "heartbeat", "schedule": "*/5 * * * *", "context": "heartbeat", "session": "agent", "prompt": "x"}
+        workspace = self._workspace(tmp_path, original)
+
+        _migrate_heartbeat_job(workspace)
+
+        assert self._jobs(workspace) == [original]
+        assert "up to date" in capsys.readouterr().out
+
+    def test_unmodified_checklist_template_is_replaced(self, tmp_path, capsys, monkeypatch):
+        from faffmonkey.cli import update
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / "HEARTBEAT.md").write_text(
+            "# Heartbeat\n\nChecks evaluated on every heartbeat tick. ...\n\n"
+            "No checks are configured yet: respond with exactly NO_REPLY.\n"
+            "(Delete the line above when you add your first check.)\n"
+        )
+        monkeypatch.setattr(update, "_find_template_dir", lambda: Path(__file__).resolve().parent.parent / "templates")
+
+        update._migrate_heartbeat_file(workspace)
+
+        text = (workspace / "HEARTBEAT.md").read_text()
+        assert "Standing instructions" in text
+        assert "Checks evaluated" not in text
+        assert "replaced" in capsys.readouterr().out
+
+    def test_checklist_with_user_lines_is_left_with_a_note(self, tmp_path, capsys):
+        from faffmonkey.cli.update import _migrate_heartbeat_file
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        original = "# Heartbeat\n\nChecks evaluated on every heartbeat tick. ...\n\n- Warn me if the AQI is above 180\n"
+        (workspace / "HEARTBEAT.md").write_text(original)
+
+        _migrate_heartbeat_file(workspace)
+
+        assert (workspace / "HEARTBEAT.md").read_text() == original
+        assert "sensor job" in capsys.readouterr().out
+
+    def test_new_style_file_is_silent(self, tmp_path, capsys):
+        from faffmonkey.cli.update import _migrate_heartbeat_file
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / "HEARTBEAT.md").write_text("# Heartbeat\n\n- One message, plain.\n")
+
+        _migrate_heartbeat_file(workspace)
+
+        assert capsys.readouterr().out == ""

@@ -106,6 +106,77 @@ def _sync_templates(workspace: Path) -> None:
         print("  templates: all up to date")
 
 
+# Prompts the wizard wrote before 0.2.0. A job still carrying one has not
+# been edited by the operator, so it is safe to rewrite.
+_OLD_HEARTBEAT_PROMPTS = frozenset({
+    "Check HEARTBEAT.md items. If nothing needs attention, respond with NO_REPLY",
+    "Go through HEARTBEAT.md. If any line asks you to report something now, "
+    "or anything on it needs attention, write what the user should hear. "
+    "Only if there is nothing to say, respond with exactly NO_REPLY",
+})
+
+
+def _migrate_heartbeat_job(workspace: Path) -> None:
+    """A pre-0.2.0 heartbeat job ran a tool-less gate hourly; a wake is an
+    agent turn, and a quiet tick is free, so the job runs every five
+    minutes. Rewritten in place when it still has the old shape."""
+    from faffmonkey.runtime.scheduler import HEARTBEAT_PROMPT
+
+    jobs_path = workspace / "config" / "jobs.json"
+    try:
+        jobs = json.loads(jobs_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(jobs, list):
+        return
+    changed: list[str] = []
+    for job in jobs:
+        if not isinstance(job, dict) or job.get("context") != "heartbeat":
+            continue
+        if job.get("session") == "agent":
+            continue
+        job["session"] = "agent"
+        if job.get("schedule") == "0 * * * *":
+            job["schedule"] = "*/5 * * * *"
+        if str(job.get("prompt") or "").strip().rstrip(".") in _OLD_HEARTBEAT_PROMPTS:
+            job["prompt"] = HEARTBEAT_PROMPT
+        changed.append(str(job.get("id")))
+    if not changed:
+        print("  heartbeat job: up to date")
+        return
+    jobs_path.write_text(json.dumps(jobs, indent=2) + "\n")
+    print(f"  heartbeat job: rewrote {', '.join(changed)} as an agent wake every five minutes")
+
+
+def _migrate_heartbeat_file(workspace: Path) -> None:
+    """HEARTBEAT.md was a checklist a gate evaluated; it is now standing
+    instructions read on a wake. The unmodified old template is replaced;
+    a file with the user's own lines is left, with a note."""
+    path = workspace / "HEARTBEAT.md"
+    if path.is_symlink():
+        return
+    try:
+        text = path.read_text()
+    except OSError:
+        return
+    if "Checks evaluated on every heartbeat tick" not in text:
+        return
+    if "No checks are configured yet: respond with exactly NO_REPLY." in text:
+        template_dir = _find_template_dir()
+        src = template_dir / "workspace" / "HEARTBEAT.md" if template_dir else None
+        if src is None or not src.is_file():
+            print("  HEARTBEAT.md: old checklist template; no template found to replace it")
+            return
+        path.write_text(src.read_text())
+        print("  HEARTBEAT.md: replaced the checklist template with standing instructions")
+        return
+    print(
+        "  HEARTBEAT.md: still worded as a checklist. It is now standing "
+        "instructions read when the heartbeat wakes; anything that needs "
+        "checking belongs in a sensor job (see the heartbeat skill's HUMAN.md)"
+    )
+
+
 def _builtin_origin_entry(name: str, source_hash: str) -> dict:
     return {
         "source": f"templates/workspace/skills/{name}",
@@ -448,6 +519,11 @@ def run_update(base: Path) -> int:
             print(f"  skipped: {e}")
     else:
         print("  no workspace/ directory")
+
+    if workspace_dir.is_dir():
+        print("\nHeartbeat:")
+        _migrate_heartbeat_job(workspace_dir)
+        _migrate_heartbeat_file(workspace_dir)
 
     print("\nContrib:")
     _check_contrib_staleness(base)

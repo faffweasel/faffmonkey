@@ -51,7 +51,7 @@ DIGESTS_FILE = os.path.join(SKILL_DATA, "digests.json")
 LEGACY_DIGESTS_FILE = os.path.join(WORKSPACE, "config", "digests.json")
 SEEN_DIR = os.path.join(SKILL_DATA, "seen")
 
-USER_AGENT = "faffmonkey/0.1.0"
+USER_AGENT = "faffmonkey"
 
 # Auto-prune seen entries older than this
 SEEN_MAX_AGE_DAYS = 90

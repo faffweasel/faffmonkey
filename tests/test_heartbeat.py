@@ -13,18 +13,18 @@ from faffmonkey.types import CompletionResponse
 import importlib
 
 
-def _load_watchdog():
+def _load_script(name: str):
     spec = importlib.util.spec_from_file_location(
-        "watchdog",
+        name.removesuffix(".py"),
         Path(__file__).resolve().parent.parent
-        / "templates" / "workspace" / "skills" / "heartbeat" / "scripts" / "run.py",
+        / "templates" / "workspace" / "skills" / "heartbeat" / "scripts" / name,
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
-watchdog = _load_watchdog()
+watchdog = _load_script("run.py")
 
 
 def _make_config(**overrides) -> Config:
@@ -239,6 +239,125 @@ class TestWatchdogRunFull:
         assert second["triggers"] == []
 
 
+class TestWatchdogTray:
+    """Sensors talk to the heartbeat by dropping files. The watchdog turns
+    them into prompt lines and names them, so the wake can remove exactly
+    what it saw."""
+
+    def test_collects_triggers_and_names_their_files(self, tmp_path):
+        tray = tmp_path / "triggers.d"
+        tray.mkdir()
+        (tray / "aqi-high.json").write_text(json.dumps(
+            {"source": "aqi", "kind": "alert", "text": "AQI 192, above your 180 threshold"},
+        ))
+        (tray / "poke-1.json").write_text(json.dumps({"text": "look around"}))
+
+        lines, files = watchdog.collect_triggers(tmp_path)
+
+        assert lines == [
+            "aqi (alert): AQI 192, above your 180 threshold",
+            "poke-1 (alert): look around",
+        ]
+        assert files == ["aqi-high.json", "poke-1.json"]
+
+    def test_bad_files_are_reported_and_skipped(self, tmp_path, capsys):
+        tray = tmp_path / "triggers.d"
+        tray.mkdir()
+        (tray / "broken.json").write_text("{not json")
+        (tray / "empty.json").write_text(json.dumps({"source": "x"}))
+        (tray / "notes.txt").write_text("ignored")
+
+        lines, files = watchdog.collect_triggers(tmp_path)
+
+        assert lines == [] and files == []
+        err = capsys.readouterr().err
+        assert "broken.json" in err and "empty.json" in err
+
+    def test_no_tray_is_clean(self, tmp_path):
+        assert watchdog.collect_triggers(tmp_path) == ([], [])
+
+    def test_tray_trigger_makes_the_run_attention_with_files(self, tmp_path):
+        tz = ZoneInfo("UTC")
+        workspace = tmp_path / "workspace"
+        (workspace / "memory" / "daily").mkdir(parents=True)
+        yesterday = (datetime.now(tz) - timedelta(days=1)).date()
+        (workspace / "memory" / "daily" / f"{yesterday.isoformat()}.md").write_text("# exists")
+        skill_data = tmp_path / "skill_data"
+        tray = skill_data / "triggers.d"
+        tray.mkdir(parents=True)
+        (tray / "weather-rain.json").write_text(json.dumps(
+            {"source": "weather", "kind": "alert", "text": "rain within 2h"},
+        ))
+
+        with patch.object(watchdog, "check_morning_stamp", return_value=[]):
+            result = watchdog.run_watchdog(workspace, skill_data, tz)
+
+        assert result["status"] == "attention"
+        assert result["triggers"] == ["weather (alert): rain within 2h"]
+        assert result["files"] == ["weather-rain.json"]
+        assert (tray / "weather-rain.json").exists()
+
+
+class TestWatchdogReadings:
+    def test_last_line_of_each_reading_with_its_age(self, tmp_path):
+        tz = ZoneInfo("UTC")
+        now = datetime(2026, 8, 29, 15, 10, tzinfo=tz)
+        readings = tmp_path / "readings"
+        readings.mkdir()
+        (readings / "aqi.jsonl").write_text(
+            json.dumps({"at": "2026-08-29T14:00:00+00:00", "summary": "AQI 150"}) + "\n"
+            + json.dumps({"at": "2026-08-29T15:00:00+00:00", "summary": "AQI 192 at Hoan Kiem"}) + "\n"
+        )
+        (readings / "weather.jsonl").write_text(
+            json.dumps({"at": "2026-08-27T15:00:00+00:00", "summary": "35C, humid"}) + "\n"
+        )
+
+        assert watchdog.collect_readings(tmp_path, now) == [
+            "aqi (10m ago): AQI 192 at Hoan Kiem",
+            "weather (2d ago): 35C, humid",
+        ]
+
+    def test_unreadable_or_summaryless_readings_are_skipped(self, tmp_path, capsys):
+        tz = ZoneInfo("UTC")
+        readings = tmp_path / "readings"
+        readings.mkdir()
+        (readings / "broken.jsonl").write_text("{not json\n")
+        (readings / "bare.jsonl").write_text(json.dumps({"at": "2026-08-29T15:00:00+00:00"}) + "\n")
+
+        assert watchdog.collect_readings(tmp_path, datetime.now(tz)) == []
+        assert "broken.jsonl" in capsys.readouterr().err
+
+    def test_no_readings_dir(self, tmp_path):
+        assert watchdog.collect_readings(tmp_path, datetime.now(ZoneInfo("UTC"))) == []
+
+
+class TestPoke:
+    def test_writes_an_occasion_trigger(self, tmp_path, monkeypatch, capsys):
+        poke = _load_script("poke.py")
+        monkeypatch.setenv("SKILL_DATA", str(tmp_path))
+        monkeypatch.setenv("TZ", "UTC")
+        monkeypatch.setattr("sys.argv", ["poke.py", "Check", "the", "afternoon."])
+
+        poke.main()
+
+        files = list((tmp_path / "triggers.d").glob("poke-*.json"))
+        assert len(files) == 1
+        item = json.loads(files[0].read_text())
+        assert item["kind"] == "occasion" and item["source"] == "poke"
+        assert item["text"] == "Check the afternoon."
+        assert "trigger written" in capsys.readouterr().out
+
+    def test_default_text_when_none_given(self, tmp_path, monkeypatch):
+        poke = _load_script("poke.py")
+        monkeypatch.setenv("SKILL_DATA", str(tmp_path))
+        monkeypatch.setattr("sys.argv", ["poke.py"])
+
+        poke.main()
+
+        item = json.loads(next((tmp_path / "triggers.d").glob("poke-*.json")).read_text())
+        assert item["text"]
+
+
 # -- triggers loading --
 
 class TestLoadTriggers:
@@ -263,21 +382,35 @@ class TestLoadTriggers:
 
 # -- heartbeat scheduler context --
 
-class TestHeartbeatContext:
-    def _make_scheduler(self, tmp_path, provider_response="test output"):
-        config = _make_config()
+def _fake_watchdog(triggers, files=(), readings=()):
+    """A stand-in for the heartbeat skill's run action: writes triggers.json
+    the way the real watchdog does, without a skill install in tmp_path."""
+    def invoke(ws, name, action, **kwargs):
+        path = ws / "skills-data" / "heartbeat" / "triggers.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "status": "attention" if triggers else "clean",
+            "triggers": list(triggers),
+            "files": list(files),
+            "readings": list(readings),
+        }))
+        return ("ok", [], False)
+    return invoke
+
+
+class TestHeartbeatTick:
+    """The contract: the watchdog decides whether to wake, a wake is one
+    agent turn with tools, and a wake consumes the triggers it was handed."""
+
+    def _scheduler(self, tmp_path, answer="noted"):
+        config = _make_config(tool_permissions={"file_read": "always"})
         workspace = tmp_path / "workspace"
-        workspace.mkdir()
-        (workspace / "config").mkdir()
+        (workspace / "config").mkdir(parents=True)
         (workspace / "SOUL.md").write_text("You are a test agent.")
         state_dir = tmp_path / "state"
         state_dir.mkdir()
-
         provider = MagicMock()
-        provider.complete.return_value = CompletionResponse(
-            text=provider_response, model="test",
-        )
-
+        provider.complete.return_value = CompletionResponse(text=answer, model="test")
         scheduler = Scheduler(
             config=config, workspace=workspace, state_dir=state_dir,
             resolve_provider=lambda m: provider,
@@ -285,132 +418,118 @@ class TestHeartbeatContext:
         )
         return scheduler, provider, workspace
 
-    def test_empty_heartbeat_skips_with_zero_llm(self, tmp_path):
-        scheduler, provider, workspace = self._make_scheduler(tmp_path)
-        job = CronJob(
-            id="heartbeat", schedule="0 * * * *", prompt="check",
-            context="heartbeat", session="isolated",
-            deliver_mode="announce", deliver_channel="telegram",
+    def _job(self, **overrides):
+        fields = dict(
+            id="heartbeat", schedule="*/5 * * * *", prompt=None, context="heartbeat",
+            session="agent", deliver_mode="announce", deliver_channel="telegram",
         )
-        with patch("faffmonkey.runtime.scheduler.provider_preflight", return_value=True):
-            result = scheduler.run_job(job)
-        assert result.status == "skipped"
-        assert result.error == "empty-heartbeat-file"
+        fields.update(overrides)
+        return CronJob(**fields)
+
+    def _run(self, scheduler, job, watchdog_fn):
+        with (
+            patch("faffmonkey.runtime.skills.invoke", side_effect=watchdog_fn),
+            patch("faffmonkey.runtime.scheduler.provider_preflight", return_value=True),
+        ):
+            return scheduler.run_job(job)
+
+    def test_clean_tick_calls_no_model_and_writes_no_log_row(self, tmp_path):
+        scheduler, provider, workspace = self._scheduler(tmp_path)
+        (workspace / "HEARTBEAT.md").write_text("- be brief")
+
+        result = self._run(scheduler, self._job(), _fake_watchdog([]))
+
+        assert result.status == "skipped" and result.error == "clean"
         provider.complete.assert_not_called()
+        assert not (scheduler.state_dir / "logs" / "cron" / "heartbeat.jsonl").exists()
 
-    def test_missing_heartbeat_file_skips(self, tmp_path):
-        scheduler, provider, workspace = self._make_scheduler(tmp_path)
-        job = CronJob(
-            id="heartbeat", schedule="0 * * * *", prompt="check",
-            context="heartbeat", session="isolated",
-            deliver_mode="none",
+    def test_trigger_wakes_one_agent_turn_with_tools_and_delivers(self, tmp_path):
+        scheduler, provider, workspace = self._scheduler(tmp_path, "AQI is 192, stay in.")
+
+        result = self._run(
+            scheduler, self._job(),
+            _fake_watchdog(["aqi (alert): AQI 192, above your 180 threshold"]),
         )
-        with patch("faffmonkey.runtime.scheduler.provider_preflight", return_value=True):
-            result = scheduler.run_job(job)
-        assert result.status == "skipped"
-        assert result.error == "empty-heartbeat-file"
-        provider.complete.assert_not_called()
 
-    def test_clean_triggers_and_heartbeat_calls_cheap_gate(self, tmp_path):
-        scheduler, provider, workspace = self._make_scheduler(tmp_path, "NO_REPLY")
-        (workspace / "HEARTBEAT.md").write_text("# Heartbeat\n- Check things")
-
-        job = CronJob(
-            id="heartbeat", schedule="0 * * * *", prompt="check heartbeat",
-            context="heartbeat", session="isolated",
-            deliver_mode="announce", deliver_channel="telegram",
-        )
-        with patch("faffmonkey.runtime.scheduler.provider_preflight", return_value=True):
-            result = scheduler.run_job(job)
         assert result.status == "success"
         provider.complete.assert_called_once()
+        request = provider.complete.call_args[0][0]
+        assert request.tools
+        assert "aqi (alert): AQI 192" in request.messages[-1].content
+        scheduler.channels["telegram"].send.assert_called_once()
+
+    def test_no_reply_wake_is_success_and_sends_nothing(self, tmp_path):
+        scheduler, provider, workspace = self._scheduler(tmp_path, "NO_REPLY")
+
+        result = self._run(scheduler, self._job(), _fake_watchdog(["poke (occasion): look"]))
+
+        assert result.status == "success"
         scheduler.channels["telegram"].send.assert_not_called()
 
-    def test_cheap_gate_escalates_on_attention(self, tmp_path):
-        config = _make_config()
-        workspace = tmp_path / "workspace"
-        workspace.mkdir()
-        (workspace / "config").mkdir()
-        (workspace / "SOUL.md").write_text("You are a test agent.")
-        (workspace / "HEARTBEAT.md").write_text("# Heartbeat\n- Check things")
-        state_dir = tmp_path / "state"
-        state_dir.mkdir()
+    def test_wake_consumes_only_the_triggers_it_was_handed(self, tmp_path):
+        scheduler, provider, workspace = self._scheduler(tmp_path, "NO_REPLY")
+        tray = workspace / "skills-data" / "heartbeat" / "triggers.d"
+        tray.mkdir(parents=True)
+        (tray / "aqi-high.json").write_text("{}")
+        (tray / "weather-rain.json").write_text("{}")
 
-        provider = MagicMock()
-        provider.complete.side_effect = [
-            CompletionResponse(text="User hasn't checked in. Send a nudge.", model="test"),
-            CompletionResponse(text="Hey, just checking in!", model="test"),
-        ]
-        channel = MagicMock()
-
-        scheduler = Scheduler(
-            config=config, workspace=workspace, state_dir=state_dir,
-            resolve_provider=lambda m: provider,
-            channels={"telegram": channel},
+        self._run(
+            scheduler, self._job(),
+            _fake_watchdog(["aqi (alert): AQI 192"], files=["aqi-high.json"]),
         )
 
-        job = CronJob(
-            id="heartbeat", schedule="0 * * * *", prompt="check",
-            context="heartbeat", session="isolated",
-            deliver_mode="announce", deliver_channel="telegram",
-        )
-        with patch("faffmonkey.runtime.scheduler.provider_preflight", return_value=True):
-            result = scheduler.run_job(job)
-        assert result.status == "success"
-        assert provider.complete.call_count == 2
-        channel.send.assert_called_once()
+        assert not (tray / "aqi-high.json").exists()
+        assert (tray / "weather-rain.json").exists()
 
-    def test_attention_triggers_skip_cheap_gate(self, tmp_path):
-        scheduler, provider, workspace = self._make_scheduler(tmp_path, "Handling triggers")
-        triggers_dir = workspace / "skills-data" / "heartbeat"
-        triggers_dir.mkdir(parents=True)
-        triggers_data = {
-            "status": "attention",
-            "triggers": ["morning_missed: past deadline"],
-        }
-        (triggers_dir / "triggers.json").write_text(json.dumps(triggers_data))
-        (workspace / "HEARTBEAT.md").write_text("# Heartbeat\n- Check things")
+    def test_failed_wake_keeps_its_triggers_for_the_retry(self, tmp_path):
+        scheduler, provider, workspace = self._scheduler(tmp_path)
+        tray = workspace / "skills-data" / "heartbeat" / "triggers.d"
+        tray.mkdir(parents=True)
+        (tray / "aqi-high.json").write_text("{}")
 
-        job = CronJob(
-            id="heartbeat", schedule="0 * * * *", prompt="check heartbeat",
-            context="heartbeat", session="isolated",
-            deliver_mode="announce", deliver_channel="telegram",
+        with patch("faffmonkey.runtime.scheduler._run_agent", side_effect=RuntimeError("provider down")):
+            result = self._run(
+                scheduler, self._job(),
+                _fake_watchdog(["aqi (alert): AQI 192"], files=["aqi-high.json"]),
+            )
+
+        assert result.status == "error"
+        assert (tray / "aqi-high.json").exists()
+
+    def test_trigger_file_names_outside_the_tray_are_ignored(self, tmp_path):
+        scheduler, provider, workspace = self._scheduler(tmp_path, "NO_REPLY")
+        victim = workspace / "SOUL.md"
+
+        self._run(
+            scheduler, self._job(),
+            _fake_watchdog(["x (alert): y"], files=["../../SOUL.md", "/etc/passwd"]),
         )
-        with patch("faffmonkey.runtime.scheduler.provider_preflight", return_value=True):
-            result = scheduler.run_job(job)
+
+        assert victim.exists()
+
+    def test_missing_heartbeat_file_still_wakes(self, tmp_path):
+        scheduler, provider, workspace = self._scheduler(tmp_path, "NO_REPLY")
+
+        result = self._run(scheduler, self._job(), _fake_watchdog(["poke (occasion): look"]))
+
         assert result.status == "success"
         provider.complete.assert_called_once()
-        call_args = provider.complete.call_args[0][0]
-        assert "morning_missed" in call_args.messages[-1].content
+        assert "Standing instructions" not in provider.complete.call_args[0][0].messages[-1].content
 
     def test_load_jobs_parses_context(self, tmp_path):
         workspace = tmp_path / "workspace"
         (workspace / "config").mkdir(parents=True)
         jobs_data = [{
             "id": "heartbeat",
-            "schedule": "0 * * * *",
+            "schedule": "*/5 * * * *",
             "prompt": "check",
             "context": "heartbeat",
-            "session": "isolated",
+            "session": "agent",
         }]
         (workspace / "config" / "jobs.json").write_text(json.dumps(jobs_data))
         from faffmonkey.runtime.scheduler import load_jobs
         jobs = load_jobs(workspace)
         assert jobs[0].context == "heartbeat"
-
-    def test_no_reply_heartbeat_not_an_error(self, tmp_path):
-        """Empty/NO_REPLY from heartbeat is success, not error."""
-        scheduler, provider, workspace = self._make_scheduler(tmp_path, "NO_REPLY")
-        (workspace / "HEARTBEAT.md").write_text("# Heartbeat\n- Check things")
-
-        job = CronJob(
-            id="heartbeat", schedule="0 * * * *", prompt="check",
-            context="heartbeat", session="isolated",
-            deliver_mode="none",
-        )
-        with patch("faffmonkey.runtime.scheduler.provider_preflight", return_value=True):
-            result = scheduler.run_job(job)
-        assert result.status == "success"
 
 
 class TestHeartbeatFileTrust:
@@ -422,18 +541,19 @@ class TestHeartbeatFileTrust:
     def test_symlinked_heartbeat_is_ignored(self, tmp_path, caplog):
         config = _make_config()
         provider = MagicMock()
+        provider.complete.return_value = CompletionResponse(text="NO_REPLY", model="test")
         workspace = tmp_path / "workspace"
         workspace.mkdir()
         target = workspace / "other.md"
         target.write_text("SYMLINKED_HEARTBEAT")
         (workspace / "HEARTBEAT.md").symlink_to(target)
         job = CronJob(
-            id="hb", schedule="*/30 * * * *", context="heartbeat",
+            id="hb", schedule="*/5 * * * *", context="heartbeat",
             deliver_mode="none",
         )
 
         with (
-            patch("faffmonkey.runtime.skills.invoke", return_value=("ok", [], False)),
+            patch("faffmonkey.runtime.skills.invoke", side_effect=_fake_watchdog(["poke (occasion): look"])),
             caplog.at_level(logging.WARNING),
         ):
             text, usage, skip = _run_heartbeat(
@@ -441,8 +561,9 @@ class TestHeartbeatFileTrust:
                 now=datetime(2026, 5, 14, 10, 0, tzinfo=timezone.utc),
             )
 
-        assert skip == "empty-heartbeat-file"
-        provider.complete.assert_not_called()
+        assert skip is None
+        sent = provider.complete.call_args[0][0].messages[-1].content
+        assert "SYMLINKED_HEARTBEAT" not in sent
         assert any("HEARTBEAT.md failed trust check" in r.message for r in caplog.records)
 
 
@@ -488,17 +609,20 @@ class TestHeartbeatConfigIsHonoured:
         sent = provider.complete.call_args[0][0].messages[-1].content
         assert "morning_missed" in sent
 
-    def test_watchdog_failure_does_not_stop_the_heartbeat(self, tmp_path):
+    def test_watchdog_failure_leaves_the_last_triggers_in_force(self, tmp_path):
+        """A broken watchdog must not silence a trigger that was already
+        written; the tick reads whatever triggers.json is there."""
         config = _make_config()
         provider = MagicMock()
         provider.complete.return_value = CompletionResponse(text="NO_REPLY", model="test")
+        workspace = self._workspace(tmp_path)
+        _fake_watchdog(["aqi (alert): 192"])(workspace, "heartbeat", "run")
 
         with patch(
             "faffmonkey.runtime.skills.invoke", side_effect=OSError("no such skill"),
         ):
             text, usage, skip = _run_heartbeat(
-                self._job(), config, lambda m: provider,
-                self._workspace(tmp_path), tmp_path,
+                self._job(), config, lambda m: provider, workspace, tmp_path,
                 now=datetime(2026, 5, 14, 10, 0, tzinfo=timezone.utc),
             )
 
@@ -536,11 +660,12 @@ class TestHeartbeatConfigIsHonoured:
         provider = MagicMock()
         provider.complete.return_value = CompletionResponse(text="NO_REPLY", model="test")
 
-        text, usage, skip = _run_heartbeat(
-            self._job(), config, lambda m: provider,
-            self._workspace(tmp_path), tmp_path,
-            now=datetime(2026, 5, 14, 10, 0, tzinfo=timezone.utc),
-        )
+        with patch("faffmonkey.runtime.skills.invoke", side_effect=_fake_watchdog(["poke (occasion): look"])):
+            text, usage, skip = _run_heartbeat(
+                self._job(), config, lambda m: provider,
+                self._workspace(tmp_path), tmp_path,
+                now=datetime(2026, 5, 14, 10, 0, tzinfo=timezone.utc),
+            )
 
         assert skip is None
         provider.complete.assert_called_once()
@@ -556,19 +681,12 @@ class TestHeartbeatConfigIsHonoured:
         assert _heartbeat_skip_reason(config, day) == "outside-active-hours"
 
 
-class TestHeartbeatGateSlot:
-    """D3: the documented cheap gate billed the main model on every run."""
+class TestHeartbeatModelSlot:
+    """A wake runs on the `heartbeat` route when one is configured, so the
+    slot that costs every wake is the one the operator chose for it."""
 
-    def test_gate_resolves_the_heartbeat_route(self, tmp_path):
-        seen = []
-
-        def resolver(mc):
-            seen.append(mc.model)
-            provider = MagicMock()
-            provider.complete.return_value = CompletionResponse(text="NO_REPLY", model=mc.model)
-            return provider
-
-        config = _make_config(
+    def _config(self, routing):
+        return _make_config(
             models={
                 "main": ModelConfig(
                     provider="test", model="expensive",
@@ -579,90 +697,112 @@ class TestHeartbeatGateSlot:
                     base_url="http://localhost:11434/v1", api_key="",
                 ),
             },
-            routing={"conversation": "main", "cron_default": "main", "heartbeat": "cheap"},
+            routing=routing,
             heartbeat=HeartbeatConfig(active_hours=(0, 24)),
         )
+
+    def _wake(self, tmp_path, config, job):
+        seen = []
+
+        def resolver(mc):
+            seen.append(mc.model)
+            provider = MagicMock()
+            provider.complete.return_value = CompletionResponse(text="NO_REPLY", model=mc.model)
+            return provider
+
         workspace = tmp_path / "workspace"
         workspace.mkdir()
-        (workspace / "HEARTBEAT.md").write_text("- check the thing")
+        with patch("faffmonkey.runtime.skills.invoke", side_effect=_fake_watchdog(["poke (occasion): look"])):
+            _run_heartbeat(
+                job, config, resolver, workspace, tmp_path,
+                now=datetime(2026, 5, 14, 10, 0, tzinfo=timezone.utc),
+            )
+        return seen
 
-        _run_heartbeat(
-            CronJob(id="hb", schedule="*/30 * * * *", context="heartbeat"),
-            config, resolver, workspace, tmp_path,
-            now=datetime(2026, 5, 14, 10, 0, tzinfo=timezone.utc),
-        )
-
+    def test_wake_runs_on_the_heartbeat_route(self, tmp_path):
+        config = self._config({"conversation": "main", "cron_default": "main", "heartbeat": "cheap"})
+        seen = self._wake(tmp_path, config, CronJob(id="hb", schedule="*/5 * * * *", context="heartbeat"))
         assert seen == ["cheap-model"]
 
-    def test_escalation_uses_cron_default_not_the_gate_model(self, tmp_path):
-        seen = []
-
-        def resolver(mc):
-            seen.append(mc.model)
-            provider = MagicMock()
-            provider.complete.return_value = CompletionResponse(
-                text="the visa appointment is in 48 hours", model=mc.model,
-            )
-            return provider
-
-        config = _make_config(
-            models={
-                "main": ModelConfig(
-                    provider="test", model="expensive",
-                    base_url="http://localhost:11434/v1", api_key="",
-                ),
-                "cheap": ModelConfig(
-                    provider="test", model="cheap-model",
-                    base_url="http://localhost:11434/v1", api_key="",
-                ),
-            },
-            routing={"conversation": "main", "cron_default": "main", "heartbeat": "cheap"},
-            heartbeat=HeartbeatConfig(active_hours=(0, 24)),
+    def test_job_model_override_wins(self, tmp_path):
+        config = self._config({"conversation": "main", "cron_default": "cheap", "heartbeat": "cheap"})
+        seen = self._wake(
+            tmp_path, config, CronJob(id="hb", schedule="*/5 * * * *", context="heartbeat", model="main"),
         )
-        workspace = tmp_path / "workspace"
-        workspace.mkdir()
-        (workspace / "HEARTBEAT.md").write_text("- any deadline within 48 hours?")
-
-        _run_heartbeat(
-            CronJob(id="hb", schedule="*/30 * * * *", context="heartbeat"),
-            config, resolver, workspace, tmp_path,
-            now=datetime(2026, 5, 14, 10, 0, tzinfo=timezone.utc),
-        )
-
-        # Gate detects on cheap; escalation composes on cron_default.
-        assert seen == ["cheap-model", "expensive"]
-
-    def test_job_model_override_still_wins(self, tmp_path):
-        seen = []
-
-        def resolver(mc):
-            seen.append(mc.model)
-            provider = MagicMock()
-            provider.complete.return_value = CompletionResponse(text="NO_REPLY", model=mc.model)
-            return provider
-
-        config = _make_config(
-            models={
-                "main": ModelConfig(
-                    provider="test", model="expensive",
-                    base_url="http://localhost:11434/v1", api_key="",
-                ),
-                "cheap": ModelConfig(
-                    provider="test", model="cheap-model",
-                    base_url="http://localhost:11434/v1", api_key="",
-                ),
-            },
-            routing={"conversation": "main", "cron_default": "cheap", "heartbeat": "cheap"},
-            heartbeat=HeartbeatConfig(active_hours=(0, 24)),
-        )
-        workspace = tmp_path / "workspace"
-        workspace.mkdir()
-        (workspace / "HEARTBEAT.md").write_text("- check the thing")
-
-        _run_heartbeat(
-            CronJob(id="hb", schedule="*/30 * * * *", context="heartbeat", model="main"),
-            config, resolver, workspace, tmp_path,
-            now=datetime(2026, 5, 14, 10, 0, tzinfo=timezone.utc),
-        )
-
         assert seen == ["expensive"]
+
+    def test_without_a_heartbeat_route_cron_default_is_used(self, tmp_path):
+        config = self._config({"conversation": "main", "cron_default": "main"})
+        seen = self._wake(tmp_path, config, CronJob(id="hb", schedule="*/5 * * * *", context="heartbeat"))
+        assert seen == ["expensive"]
+
+
+class TestRecentDeliveries:
+    """A wake is shown what the heartbeat already sent, so "already told
+    them" is evidence in the prompt rather than something the model has
+    to remember across turns it never sees."""
+
+    def _scheduler(self, tmp_path, answer):
+        config = _make_config()
+        workspace = tmp_path / "workspace"
+        (workspace / "config").mkdir(parents=True)
+        (workspace / "SOUL.md").write_text("You are a test agent.")
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        provider = MagicMock()
+        provider.complete.return_value = CompletionResponse(text=answer, model="test")
+        return Scheduler(
+            config=config, workspace=workspace, state_dir=state_dir,
+            resolve_provider=lambda m: provider, channels={"telegram": MagicMock()},
+        ), provider
+
+    def _job(self):
+        return CronJob(
+            id="heartbeat", schedule="*/5 * * * *", context="heartbeat", session="agent",
+            deliver_mode="announce", deliver_channel="telegram",
+        )
+
+    def test_delivered_message_is_remembered_persisted_and_reloaded(self, tmp_path):
+        scheduler, provider = self._scheduler(tmp_path, "AQI is 192, stay in.")
+        with (
+            patch("faffmonkey.runtime.skills.invoke", side_effect=_fake_watchdog(["aqi (alert): 192"])),
+            patch("faffmonkey.runtime.scheduler.provider_preflight", return_value=True),
+        ):
+            scheduler.run_job(self._job())
+
+        assert scheduler._recent["heartbeat"][0]["text"] == "AQI is 192, stay in."
+        saved = json.loads((scheduler.state_dir / "cron-state.json").read_text())
+        assert saved["jobs"]["heartbeat"]["recent"][0]["text"] == "AQI is 192, stay in."
+
+        fresh = Scheduler(
+            config=scheduler.config, workspace=scheduler.workspace, state_dir=scheduler.state_dir,
+            resolve_provider=scheduler.resolve_provider, channels={},
+        )
+        fresh.load_state()
+        assert fresh._recent["heartbeat"][0]["text"] == "AQI is 192, stay in."
+
+    def test_next_wake_is_shown_what_was_sent(self, tmp_path):
+        scheduler, provider = self._scheduler(tmp_path, "NO_REPLY")
+        scheduler._recent["heartbeat"] = [{"at": "2026-05-14T09:00:00Z", "text": "AQI is 192, stay in."}]
+        with (
+            patch("faffmonkey.runtime.skills.invoke", side_effect=_fake_watchdog(["aqi (alert): 195"])),
+            patch("faffmonkey.runtime.scheduler.provider_preflight", return_value=True),
+        ):
+            scheduler.run_job(self._job())
+
+        sent = provider.complete.call_args[0][0].messages[-1].content
+        assert "Sent by the heartbeat recently:" in sent
+        assert "AQI is 192, stay in." in sent
+
+    def test_kept_to_ten_and_two_days(self, tmp_path):
+        scheduler, _provider = self._scheduler(tmp_path, "unused")
+        for i in range(12):
+            scheduler._remember_delivery("heartbeat", f"message {i}")
+        assert [e["text"] for e in scheduler._recent["heartbeat"]] == [f"message {i}" for i in range(2, 12)]
+
+        stale = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat(timespec="seconds").replace("+00:00", "Z")
+        scheduler._recent["other"] = [{"at": stale, "text": "old news"}]
+        scheduler._save_state()
+        saved = json.loads((scheduler.state_dir / "cron-state.json").read_text())
+        assert "other" not in saved["jobs"]
+        assert len(saved["jobs"]["heartbeat"]["recent"]) == 10

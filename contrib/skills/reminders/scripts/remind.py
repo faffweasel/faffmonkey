@@ -301,6 +301,22 @@ def cmd_remove(reminder_id: str) -> int:
     return 0
 
 
+def _drop_heartbeat_trigger(reminder: dict) -> None:
+    """Tell the heartbeat a reminder just went out, so its next wake can add
+    advice if the readings argue with it. Delivery never depends on this."""
+    tray = Path(WORKSPACE) / "skills-data" / "heartbeat" / "triggers.d"
+    try:
+        tray.mkdir(parents=True, exist_ok=True)
+        (tray / f"reminders-{reminder.get('id', 'due')}.json").write_text(json.dumps({
+            "at": datetime.now(local_tz()).isoformat(timespec="seconds"),
+            "source": "reminders",
+            "kind": "occasion",
+            "text": f"Reminder just delivered: {reminder['text']}",
+        }, indent=2) + "\n")
+    except OSError as e:
+        print(f"could not write heartbeat trigger: {e}", file=sys.stderr)
+
+
 def cmd_check() -> int:
     now = datetime.now(local_tz())
     data = load_reminders()
@@ -317,6 +333,7 @@ def cmd_check() -> int:
             continue
 
         print(f"REMINDER: {r['text']}")
+        _drop_heartbeat_trigger(r)
         fired += 1
         if r.get("recurring"):
             r["fire_at"] = next_occurrence(r["recurring"], now).isoformat(
