@@ -220,9 +220,50 @@ wall.
 
 Memory is `workspace/MEMORY.md` (a short index), `memory/daily/` (one
 file per day; today and yesterday load into every session), and
-`memory/person/`, `memory/project/` (found via the memory-search
+`memory/people/`, `memory/projects/` (found via the memory-search
 skill). Everything you say in conversation beats what the files say,
 and the agent corrects the files rather than arguing with them.
+
+### Why AGENTS.md reads the way it does
+
+`AGENTS.md` is written for the model, not for you: a map of where
+things are, then trigger-and-action bullets with no reasoning attached.
+Rules with the reasons stripped out are followed more reliably than
+paragraphs that explain themselves, and every line is paid for on
+every turn. The reasons live here instead. `SOUL.md` carries voice and
+values only; anything about files, tools or memory belongs in
+`AGENTS.md`, so the two never disagree about where something is
+written.
+
+- **"Where things are" comes first.** The model's most common mistake
+  is acting on a wrong model of its own context: answering about last
+  month from what happens to be loaded, or guessing a filename and
+  reading it instead of searching. Only `MEMORY.md`, `LEARNINGS.md` and
+  two daily logs are ever in the prompt; everything else is search-only.
+- **Rules that have actually been broken sit at the top.** The
+  memory-search rule exists because the agent answered "we never
+  discussed that" from context alone. "Never tell the user a workspace
+  file needs their hand" exists because it did exactly that for a file
+  it could write. "Report a setup step as done only when the tool result
+  confirmed the write" exists because it reported an edit to `state/`
+  that no tool had made.
+- **`state/` and `config/jobs.json` are off limits** because
+  `file_write` refuses them; the rule stops the agent claiming to have
+  edited them. The `TZ=` line in `state/.env` matters because it sets
+  when cron jobs fire.
+- **`SOUL.md` and `IDENTITY.md` need agreement** because they are who
+  the agent is; the other three are working notes it is expected to
+  keep current.
+- **No web, document or tool output in the five files** because they
+  are loaded as instructions without filtering.
+- **self-review `add` rather than editing `LEARNINGS.md`** because the
+  skill enforces the entry format that `review` and `promote` parse.
+- **The single-emoji reply** is the conversation convention for
+  "nothing to add"; heartbeat and cron runs use `NO_REPLY` because the
+  scheduler recognises that token and would deliver an emoji.
+- **Group-chat silence about memory** is a rule, not an enforcement:
+  the group turn still receives the full prompt. See the known gap in
+  the extensions doc.
 
 How a day gets recorded: the loop itself keeps today's daily log. After
 every ten user turns or every hour of conversation (`daily_note` in

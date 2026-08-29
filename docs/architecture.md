@@ -543,8 +543,17 @@ every heartbeat.
   outcome is saved, nothing or failed; only failed makes compaction
   preserve the head as a blob or `/new` report that memory was not
   saved.
-- **Person and project files** (`memory/person/`, `memory/project/`):
+- **Person and project files** (`memory/people/`, `memory/projects/`):
   created as needed, found via memory-search, not auto-loaded.
+- **Memory index** (`skills-data/memory-search/index.sqlite`): the
+  memory-search skill's FTS5 index over `memory/`, `MEMORY.md` and
+  `LEARNINGS.md`. The skill refreshes it before every search, and the
+  loop refreshes it after its own writes (a saved memory flush, an
+  appended daily note) by invoking the skill's `index` action through
+  `skills.invoke`, so it does not fall behind when the agent goes days
+  without searching. Incremental and hash-based; a refresh failure is
+  logged and never fails the write. Absent when the skill is not
+  installed.
 - **sessions.db**: conversation history; disposable without losing
   identity.
 
@@ -616,7 +625,7 @@ container's egress is the real limit on exfiltration.
 
 | Tool | Default | Notes |
 |---|---|---|
-| file_read / file_list / file_write / file_edit | always | workspace-only; file_list is one directory, non-recursive, symlinks skipped; file_write has mode=append; post-write lint (.py/.json/.toml/.yaml, informational) |
+| file_read / file_list / file_write / file_edit | always | workspace-only; file_list is one directory, non-recursive, symlinks skipped; file_write has mode=append; post-write lint (.py/.json/.toml/.yaml, informational). A path component that differs from exactly one existing non-symlink entry only by case is that entry, for every file tool: the container filesystem is case-sensitive and the model capitalised a person's name as the user last typed it, so `memory/people/Phill.md` and `phill.md` both existed. file_write's result names the file actually written when the case differed |
 | file_search / file_copy / file_move / file_delete | always | the grep/cp/mv/rm the agent would otherwise need a shell for, under the same workspace-only, symlink and protected-path guards; search is recursive, case-insensitive, capped at 100 matches and 5000 files; copy and move refuse an existing destination; delete needs recursive=true for a non-empty directory and refuses the workspace root or a directory holding a protected file |
 | web_search | always | via SearchProvider seam; errors if unconfigured |
 | web_fetch | always | 50KB cap, 30s timeout, SSRF-guarded, no redirects |

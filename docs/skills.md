@@ -36,7 +36,7 @@ These ship in `templates/workspace/skills/` and are copied to `workspace/skills/
 | **document-search** | index, search | Full-text search (FTS5) over `workspace/documents/` (md, txt, csv, xlsx, pdf). |
 | **cron-manager** | list, add, update, remove, disable, enable, history | Schedule, list, and manage recurring tasks and one-shot reminders. CRUD operations on `workspace/config/jobs.json`. |
 | **heartbeat** | run | Ambient awareness. Watchdog script runs deterministic checks (file existence, timestamps, thresholds) and writes `triggers.json`. The scheduler's heartbeat handler reads triggers and decides whether to call the LLM. |
-| **memory-search** | index, search | Search across all memory files. FTS5 keyword search, optional vector semantic search, or hybrid (RRF merge). Index is incremental (SHA-256 content hashing). |
+| **memory-search** | index, search | Search across all memory files. FTS5 keyword search, optional vector semantic search, or hybrid (RRF merge). Index is incremental (SHA-256 content hashing), refreshed before every search and by the runtime after each memory flush and daily note. |
 | **morning-routine** | prepare, stamp | Daily startup: read carry-over, check preconscious buffer, gather overnight cron data, compose a greeting. Triggered by cron, not invoked directly. |
 | **preconscious** | add, read, run, drop_lowest | Track what should be top-of-mind for the next few days. Scored buffer of max 5 items with Currency (freshness) and Importance scores. Items decay daily and fade naturally. |
 | **self-review** | add, review, promote | Review and consolidate LEARNINGS.md. Log structured entries (LRN/ERR/FEAT tags), find duplicates and promotion candidates, promote recurring patterns to AGENTS.md or MEMORY.md. |

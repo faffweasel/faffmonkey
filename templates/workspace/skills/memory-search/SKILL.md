@@ -21,7 +21,7 @@ Do not use when you already know the file path (file_read) or need an exact stri
 
 ## Actions
 
-**index**, crawl memory files (default: `memory/`, `LEARNINGS.md`, `MEMORY.md`) into the search index. Incremental: only changed files are re-read, deleted files are pruned. Search runs this automatically before every query, so invoke it directly only for maintenance:
+**index**, crawl memory files (default: `memory/`, `LEARNINGS.md`, `MEMORY.md`) into the search index. Incremental: only changed files are re-read, deleted files are pruned. Search runs this automatically before every query and the runtime runs it after writing memory, so invoke it directly only for maintenance:
 
 ```
 index
@@ -61,7 +61,7 @@ Phill mentioned the visa appointment is on May 16...
 
 ## Limitations
 
-- The index refreshes automatically before every search (incremental, hash-based).
+- The index refreshes automatically before every search and after the runtime writes a daily note or memory flush (incremental, hash-based).
 - Chunks are capped at ~1600 characters; very long sections split, which can break context across chunk boundaries.
 
 Related: memory-search finds things in memory files. self-review maintains the agent's own learnings. carry-over queues messages for the user.

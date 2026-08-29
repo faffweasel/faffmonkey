@@ -11,6 +11,7 @@ from pathlib import Path
 
 from faffmonkey.config import CompactionConfig, Config, ConfigError, DailyNoteConfig, ModelConfig
 from faffmonkey.runtime.session import SessionStore
+from faffmonkey.runtime.skills import invoke as skill_invoke
 from faffmonkey.runtime.tokens import count_tokens
 from faffmonkey.seams.provider import Provider
 from faffmonkey.types import CompletionRequest, Message, ToolCall
@@ -217,6 +218,21 @@ def _is_nothing_to_save(text: str) -> bool:
     return _NOTHING_TO_SAVE in text
 
 
+def refresh_memory_index(workspace: Path, tz: str) -> None:
+    """Bring the memory-search index up to date after the runtime wrote
+    to memory. The index is otherwise refreshed only when the agent
+    searches, and a week of daily notes went unindexed because it never
+    did. Incremental and hash-based: unchanged files cost one hash each.
+    A failure is logged and never fails the write that triggered it."""
+    if not (workspace / "skills" / "memory-search" / "scripts" / "index.py").is_file():
+        return
+    output, _attachments, is_error = skill_invoke(workspace, "memory-search", "index", tz=tz)
+    if is_error:
+        logger.warning("memory index refresh failed: %.200s", output)
+    else:
+        logger.info("memory index: %s", output.strip())
+
+
 def _flush_attempt(
     provider: Provider,
     messages: list[Message],
@@ -302,6 +318,8 @@ def memory_flush(
         except Exception as e:
             logger.warning("memory_flush failed with %s model: %s", task, e)
             continue
+        if outcome == FLUSH_SAVED:
+            refresh_memory_index(workspace, str(config.timezone))
         if outcome != FLUSH_FAILED:
             return outcome
         answered_wrongly.add(key)
@@ -445,6 +463,7 @@ def daily_note(
         return False
 
     now = datetime.now(config.timezone)
+    appended = False
     for tc in response.tool_calls or []:
         if tc.name != "daily_note":
             logger.warning("daily_note: ignoring tool call %r", tc.name)
@@ -456,7 +475,10 @@ def daily_note(
             content = content[:MAX_DAILY_NOTE_CHARS]
         path = _append_daily_note(workspace, content, now)
         logger.info("daily_note: appended to %s", path.name)
+        appended = True
     session_store.set_daily_note_at(session_id, latest)
+    if appended:
+        refresh_memory_index(workspace, str(config.timezone))
     return True
 
 

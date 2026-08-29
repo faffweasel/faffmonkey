@@ -508,10 +508,44 @@ TOOL_SCHEMAS: list[dict] = [
 ]
 
 
+def _match_existing_case(workspace: Path, relative_path: str) -> str:
+    """Component by component, substitute the one existing entry that
+    differs from the requested name only by case. The container's
+    filesystem is case-sensitive and the model capitalises a name the
+    way the user last typed it, so memory/people/Phill.md and
+    memory/people/phill.md both got created and each held half the
+    record. Symlinks are never substituted, so the callers' symlink
+    refusal still applies to the path they were given."""
+    parts = Path(relative_path).parts
+    if relative_path.startswith("/") or ".." in parts:
+        return relative_path
+    current = workspace
+    matched: list[str] = []
+    for part in parts:
+        # The listing, not exists(): on a case-insensitive filesystem
+        # exists() says yes to the wrong case and the substitution (and
+        # the result message naming the real file) would never happen.
+        try:
+            entries = {entry.name: entry for entry in current.iterdir()}
+        except OSError:
+            entries = {}
+        if part not in entries:
+            siblings = [
+                entry for name, entry in entries.items()
+                if name.casefold() == part.casefold() and not entry.is_symlink()
+            ]
+            if len(siblings) == 1:
+                part = siblings[0].name
+        matched.append(part)
+        current = current / part
+    return "/".join(matched) if matched else relative_path
+
+
 def validate_workspace_path(workspace: Path, relative_path: str) -> Path | None:
     if not isinstance(relative_path, str):
         return None
     try:
+        relative_path = _match_existing_case(workspace, relative_path)
         resolved = (workspace / relative_path).resolve()
     except (ValueError, OSError):
         return None
@@ -925,6 +959,9 @@ class ToolRegistry:
             return ToolResult(id=call_id, content=f"write error: {self._wrap_output(str(e))}", is_error=True)
 
         verb = "appended to" if mode == "append" else "wrote"
+        actual = str(resolved.relative_to(self._workspace.resolve()))
+        if actual != path_str and actual.casefold() == path_str.casefold():
+            path_str = f"{actual} (existing file; case differs from what was asked for)"
         lint_error = lint_file(resolved)
         if lint_error is not None:
             return ToolResult(

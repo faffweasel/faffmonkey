@@ -66,8 +66,10 @@ useful; semantic search is an upgrade, not a requirement.
 
 ## Maintenance
 
-- The index is self-maintaining: every search refreshes it first
-  (incremental and hash-based, so unchanged files cost one hash each).
-  No cron job and no manual index step are needed.
+- The index is self-maintaining: every search refreshes it first, and
+  the runtime refreshes it after each memory flush and daily note it
+  writes, so it stays current even when the agent goes days without
+  searching. Both are incremental and hash-based, so unchanged files
+  cost one hash each. No cron job and no manual index step are needed.
 - The index is disposable: `index --clear` (or delete the sqlite file)
   and the next search rebuilds it.

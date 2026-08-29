@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import sqlite3
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -2245,3 +2247,97 @@ class TestDailyNote:
 
         sent = [m.content for m in provider.calls[1].messages if m.role != "system"]
         assert sent == ["second hour"]
+
+
+_TEMPLATE_SKILLS = Path(__file__).parent.parent / "templates" / "workspace" / "skills"
+
+
+class TestMemoryIndexRefresh:
+    """2026-08-28: index.sqlite was four days stale while daily logs were
+    written every day. The index refreshed only when the agent searched,
+    and it never did. The runtime now refreshes it after its own writes."""
+
+    def _workspace(self, tmp_path, skill=True):
+        workspace = tmp_path / "workspace"
+        (workspace / "skills").mkdir(parents=True)
+        if skill:
+            shutil.copytree(
+                _TEMPLATE_SKILLS / "memory-search", workspace / "skills" / "memory-search",
+            )
+        store = SessionStore(tmp_path / "state" / "sessions.db")
+        session = store.get_or_create_main_session("test")
+        return workspace, store, session
+
+    def _indexed(self, workspace):
+        db = workspace / "skills-data" / "memory-search" / "index.sqlite"
+        if not db.exists():
+            return None
+        conn = sqlite3.connect(db)
+        try:
+            return {row[0] for row in conn.execute("SELECT file_path FROM file_hashes")}
+        finally:
+            conn.close()
+
+    def _note(self, content):
+        return faux_response(tool_calls=[{
+            "name": "daily_note", "arguments": {"content": content},
+        }])
+
+    def test_daily_note_indexes_the_log_it_wrote(self, tmp_path):
+        from faffmonkey.runtime.compaction import daily_note
+        workspace, store, session = self._workspace(tmp_path)
+        store.append_message(session.id, "user", "the deadline moved")
+        provider = FauxProvider([self._note("Deadline moved to Friday.")])
+        config = _make_config()
+
+        assert daily_note(store, session.id, workspace, lambda mc: provider, config)
+
+        today = datetime.now(config.timezone).date().isoformat()
+        assert self._indexed(workspace) == {f"memory/daily/{today}.md"}
+
+    def test_saved_flush_indexes_what_it_wrote(self, tmp_path):
+        workspace, store, session = self._workspace(tmp_path)
+        store.append_message(session.id, "user", "ping")
+        provider = FauxProvider([_flush_ok_response()])
+
+        result = memory_flush(store, session.id, workspace, lambda mc: provider, _make_config())
+
+        assert result == FLUSH_SAVED
+        assert self._indexed(workspace) == {"MEMORY.md"}
+
+    def test_nothing_written_leaves_the_index_alone(self, tmp_path):
+        from faffmonkey.runtime.compaction import daily_note
+        workspace, store, session = self._workspace(tmp_path)
+        store.append_message(session.id, "user", "small talk")
+        provider = FauxProvider([faux_response(text="nothing to keep")])
+
+        assert daily_note(store, session.id, workspace, lambda mc: provider, _make_config())
+
+        assert self._indexed(workspace) is None
+
+    def test_skill_not_installed_is_not_an_error(self, tmp_path):
+        from faffmonkey.runtime.compaction import daily_note
+        workspace, store, session = self._workspace(tmp_path, skill=False)
+        store.append_message(session.id, "user", "remember this")
+        provider = FauxProvider([self._note("Remembered.")])
+
+        assert daily_note(store, session.id, workspace, lambda mc: provider, _make_config())
+
+        assert len(list((workspace / "memory" / "daily").iterdir())) == 1
+        assert not (workspace / "skills-data").exists()
+
+    def test_index_failure_does_not_fail_the_write(self, tmp_path, caplog):
+        workspace, store, session = self._workspace(tmp_path, skill=False)
+        skill = workspace / "skills" / "memory-search"
+        (skill / "scripts").mkdir(parents=True)
+        (skill / "SKILL.md").write_text("---\nname: memory-search\nactions: index, search\n---\n")
+        (skill / "scripts" / "index.py").write_text("import sys\nsys.exit('index blew up')\n")
+        store.append_message(session.id, "user", "ping")
+        provider = FauxProvider([_flush_ok_response()])
+
+        with caplog.at_level("WARNING"):
+            result = memory_flush(store, session.id, workspace, lambda mc: provider, _make_config())
+
+        assert result == FLUSH_SAVED
+        assert (workspace / "MEMORY.md").read_text() == "flushed"
+        assert "index blew up" in caplog.text

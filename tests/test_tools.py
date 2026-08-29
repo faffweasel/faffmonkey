@@ -1203,6 +1203,81 @@ class TestProtectedFileHintNamesTheRoute:
         assert "confirm" not in result.content
 
 
+class TestCaseOnlyPathDifference:
+    """memory/people/Phill.md and memory/people/phill.md both existed in a
+    real workspace, each with half the record, because the model
+    capitalised the name as the user last typed it and the container
+    filesystem is case-sensitive."""
+
+    def _write(self, reg, path, content, **extra):
+        call = ToolCall(id="t1", name="file_write", arguments={
+            "path": path, "content": content, **extra,
+        })
+        return reg.dispatch(call)
+
+    def test_write_to_case_variant_goes_to_the_existing_file(self, ws):
+        people = ws / "memory" / "people"
+        people.mkdir(parents=True)
+        (people / "Phill.md").write_text("# Phill\n")
+        reg = _registry(ws, {"file_write": "always"}, wrap=False)
+        result = self._write(reg, "memory/people/phill.md", "- likes tea\n", mode="append")
+        assert not result.is_error
+        assert sorted(p.name for p in people.iterdir()) == ["Phill.md"]
+        assert (people / "Phill.md").read_text() == "# Phill\n- likes tea\n"
+        assert "memory/people/Phill.md" in result.content
+        assert "case differs" in result.content
+
+    def test_directory_components_match_too(self, ws):
+        people = ws / "memory" / "people"
+        people.mkdir(parents=True)
+        (people / "Phill.md").write_text("old")
+        reg = _registry(ws, {"file_write": "always"}, wrap=False)
+        self._write(reg, "Memory/People/PHILL.md", "new")
+        assert sorted(p.name for p in (ws / "memory").iterdir()) == ["people"]
+        assert (people / "Phill.md").read_text() == "new"
+
+    def test_read_and_edit_follow_the_same_rule(self, ws):
+        (ws / "Notes.md").write_text("alpha")
+        reg = _registry(ws, {"file_read": "always", "file_edit": "always"}, wrap=False)
+        read = reg.dispatch(ToolCall(id="r", name="file_read", arguments={"path": "notes.md"}))
+        assert read.content == "alpha"
+        edit = reg.dispatch(ToolCall(id="e", name="file_edit", arguments={
+            "path": "notes.md", "edits": [{"old_text": "alpha", "new_text": "beta"}],
+        }))
+        assert not edit.is_error
+        assert (ws / "Notes.md").read_text() == "beta"
+        assert not (ws / "notes.md").exists() or (ws / "notes.md").samefile(ws / "Notes.md")
+
+    def test_exact_match_wins_when_both_cases_exist(self, ws):
+        (ws / "Phill.md").write_text("upper")
+        (ws / "phill.md").write_text("lower")
+        if (ws / "Phill.md").read_text() == "lower":
+            pytest.skip("case-insensitive filesystem cannot hold both files")
+        reg = _registry(ws, {"file_write": "always"}, wrap=False)
+        self._write(reg, "phill.md", "changed")
+        assert (ws / "phill.md").read_text() == "changed"
+        assert (ws / "Phill.md").read_text() == "upper"
+
+    def test_new_file_with_no_case_sibling_is_created_as_asked(self, ws):
+        reg = _registry(ws, {"file_write": "always"}, wrap=False)
+        result = self._write(reg, "memory/people/Ana.md", "# Ana")
+        assert "wrote memory/people/Ana.md" in result.content
+        assert (ws / "memory" / "people" / "Ana.md").exists()
+
+    def test_symlink_sibling_is_never_substituted(self, ws):
+        (ws / "Real.md").write_text("real")
+        (ws / "Link.md").symlink_to(ws / "Real.md")
+        reg = _registry(ws, {"file_write": "always"}, wrap=False)
+        result = self._write(reg, "link.md", "x")
+        assert (ws / "Real.md").read_text() == "real"
+        # Case-sensitive: a new regular file. Case-insensitive: the path
+        # is the symlink itself and the ordinary symlink refusal fires.
+        if result.is_error:
+            assert "symlink" in result.content
+        else:
+            assert (ws / "link.md").read_text() == "x"
+
+
 class TestProtectedFileWrite:
     def _make_registry(self, ws):
         return _registry(ws, {"file_write": "always"})
