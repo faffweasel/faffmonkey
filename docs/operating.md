@@ -168,8 +168,8 @@ What happens on a tick, in order:
    `heartbeat.active_hours` (both in `state/config.json`). Recorded as
    `skipped` with the reason.
 2. The watchdog script runs (no model call). If it flags something
-   (stale carry-over, missing daily file), the agent gets a full run
-   with that context.
+   (a missed morning, LEARNINGS.md over its threshold; each at most
+   once a day), the agent gets a full run with that context.
 3. Otherwise, if `HEARTBEAT.md` is missing or empty, the tick ends
    with no model call and nothing sent.
 4. Otherwise the `heartbeat` route (default slot `cheap`) is asked
@@ -178,9 +178,13 @@ What happens on a tick, in order:
    (default `main`) to compose the message, which is delivered to the
    job's `deliver.channel`.
 
+No step has tools. The gate and the composing call see `HEARTBEAT.md`,
+the current time and the watchdog triggers, nothing else.
+
 So "the heartbeat never messages me" is usually one of:
 
-- **Empty HEARTBEAT.md.** Put the things you want watched in it.
+- **Empty HEARTBEAT.md.** Put the checks you want in it; only ones
+  answerable from the file and the clock (see below).
 - **Wrong channel.** A wizard-created job delivers to `last`, the
   channel you most recently sent a direct message on; a job that names
   a channel delivers there. Check with `faff cron list`; change it by
@@ -189,11 +193,12 @@ So "the heartbeat never messages me" is usually one of:
 - **Outside active hours.** `faff cron history heartbeat` shows
   `skipped outside-active-hours`.
 - **The gate said NO_REPLY.** `faff cron run heartbeat` shows exactly
-  what the gate answered. The gate is told that a line asking it to
-  report something is acted on every time, but a job created before
-  23 August 2026 carries the older prompt ("Check HEARTBEAT.md items.
-  If nothing needs attention, respond with NO_REPLY"), under which a
-  standing instruction reads as nothing needing attention. Replace it:
+  what the gate answered. A job keeps the prompt it was created with;
+  `faff cron list` shows it. The current default tells the gate that a
+  line asking it to report something is acted on every time. If yours
+  reads "Check HEARTBEAT.md items. If nothing needs attention, respond
+  with NO_REPLY", a standing instruction reads as nothing needing
+  attention. Replace it:
 
   ```
   /skill cron-manager update heartbeat {"prompt": "Go through HEARTBEAT.md. If any line asks you to report something now, or anything on it needs attention, write what the user should hear. Only if there is nothing to say, respond with exactly NO_REPLY."}
@@ -203,7 +208,14 @@ So "the heartbeat never messages me" is usually one of:
   since the last start means the scheduler never reached a tick.
 
 The agent can edit `HEARTBEAT.md` itself, so "keep an eye on X" in
-conversation is enough to add a line.
+conversation is enough to add a line, provided X is answerable from the
+file and the clock. Air quality, weather, a price, an inbox: the
+heartbeat cannot check any of these, and a line about them is either
+guessed at or answered `NO_REPLY`. For those the agent sets up a cron
+job instead: a `session: "none"` job on a skill whose `run` script
+prints `NO_REPLY` or the message, which costs nothing while quiet. The
+contrib `reminders` skill is the shipped example, and the heartbeat
+skill's `HUMAN.md` describes writing one.
 
 ## Identity files and memory
 
@@ -240,13 +252,12 @@ written.
   month from what happens to be loaded, or guessing a filename and
   reading it instead of searching. Only `MEMORY.md`, `LEARNINGS.md` and
   two daily logs are ever in the prompt; everything else is search-only.
-- **Rules that have actually been broken sit at the top.** The
-  memory-search rule exists because the agent answered "we never
-  discussed that" from context alone. "Never tell the user a workspace
-  file needs their hand" exists because it did exactly that for a file
-  it could write. "Report a setup step as done only when the tool result
-  confirmed the write" exists because it reported an edit to `state/`
-  that no tool had made.
+- **Rules that guard the model's known failure modes sit at the top.**
+  The memory-search rule stops it answering "we never discussed that"
+  from context alone. "Never tell the user a workspace file needs their
+  hand" stops it deferring an edit it can make itself. "Report a setup
+  step as done only when the tool result confirmed the write" stops it
+  reporting edits no tool made.
 - **`state/` and `config/jobs.json` are off limits** because
   `file_write` refuses them; the rule stops the agent claiming to have
   edited them. The `TZ=` line in `state/.env` matters because it sets

@@ -1,6 +1,6 @@
 ---
 name: cron-manager
-description: Schedule, list, and manage recurring tasks and one-shot reminders. Use when the user says 'every morning', 'remind me on Tuesday', 'check X daily', or wants to automate any periodic task. Also use to list, change, disable, re-enable, or remove existing jobs, and to check whether a job has been running.
+description: Schedule, list, and manage recurring tasks, one-shot reminders and watches. Use when the user says 'every morning', 'remind me on Tuesday', 'check X daily', 'tell me if X goes above Y', or wants to automate any periodic task. Also use to list, change, disable, re-enable, or remove existing jobs, and to check whether a job has been running.
 actions: list, add, update, remove, disable, enable, history
 ---
 
@@ -10,7 +10,7 @@ Use when the user expresses scheduling intent: "every morning", "remind me on Tu
 
 Do not use for running jobs manually; that is `faff cron run <jobId>` on the host.
 
-**Cron vs heartbeat:** cron is precise, heartbeat drifts. A task at a specific time ("7am briefing", "Friday wrap-up") is cron. An ambient check with no fixed time ("glance at this every so often") is heartbeat territory.
+**Cron vs heartbeat:** the heartbeat has no tools; it reads HEARTBEAT.md and the clock, nothing else. A line answerable from those (a standing instruction, a reminder inside a time window) goes in HEARTBEAT.md. Everything else is cron: tasks at a fixed time ("7am briefing", "Friday wrap-up"), and any watch that needs a tool or the web ("tell me if the AQI goes above 180", "warn me before it rains"). A watch is a `session: "none"` job on a skill whose `run` script prints `NO_REPLY` or the message, zero tokens while quiet (see the watch example below); use `session: "agent"` only if the finding needs composing.
 
 ## Actions
 
@@ -76,7 +76,7 @@ history heartbeat 25
 | `isolated` | Fresh context, cron bootstrap, single completion. No tools. | Independent runs: summaries, checks, reminders. |
 | `main` | Runs in the active main session with full conversation context. No tools. Output appears in the conversation. | Jobs that must reference the ongoing conversation. |
 | `agent` | Ephemeral tool-capable session: can invoke skills, read and write files, run shell. Fresh context, nothing persisted, permission prompts auto-denied, standard loop budgets apply. `model` routes the whole turn. | Default. Any job that needs tools or skill invocation: composing from skill output, writing files, multi-step work. |
-| `none` | No agent, no LLM call. Runs the skill's `run` script directly via subprocess. Zero tokens. Fails if the skill has no `run` script. | Watchdogs and data collection with no reasoning. |
+| `none` | No agent, no LLM call. Runs the skill's `run` script directly via subprocess. Zero tokens. Fails if the skill has no `run` script. With `announce`, the script's output is the message; `NO_REPLY` sends nothing. | Watchdogs, data collection, and watches whose message the script can write itself. |
 
 Only `agent` can use tools. If the prompt asks the agent to invoke a skill or touch files, the session must be `agent`; in `isolated` or `main` it will have no tools and can only answer from context.
 
@@ -111,10 +111,10 @@ Tool-capable job (agent session, invokes skills):
 add '{"id": "morning-weather", "schedule": "0 7 * * *", "prompt": "Run weather advice and fold anything notable into a short greeting.", "session": "agent", "model": "cheap", "deliver": {"mode": "announce", "channel": "telegram"}}'
 ```
 
-Watchdog (no LLM, runs the skill's `run` script):
+Watch (no LLM; the skill's `run` script prints `NO_REPLY` or the message, and only the message is delivered):
 
 ```
-add '{"id": "heartbeat-watchdog", "schedule": "*/30 * * * *", "skill": "heartbeat", "session": "none", "deliver": {"mode": "none"}}'
+add '{"id": "reminder-check", "schedule": "*/5 * * * *", "skill": "reminders", "session": "none", "deliver": {"mode": "announce", "channel": "last"}}'
 ```
 
 Evening wrap (main session, internal, rotates session):

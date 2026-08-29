@@ -424,7 +424,12 @@ Session modes: `agent` (ephemeral tool-capable turn, the default, and
 the only mode that can invoke skills or write files), `isolated` (fresh
 context, completion-only), `main` (in the live conversation,
 completion-only), `none` (no LLM; runs the skill's `run` script
-directly, zero tokens).
+directly, zero tokens). A skill's `run` script is its unattended entry
+point: it takes no arguments, keeps its settings and state in
+`SKILL_DATA`, and prints either `NO_REPLY` or a message. With `announce`
+the message is delivered as written and `NO_REPLY` sends nothing, which
+makes a `none` job a zero-token watch; empty output is recorded as a
+failed run.
 
 No mode is both tool-capable and in the live conversation, and that is
 deliberate. `main` is completion-only because a tool-calling AgentLoop
@@ -500,29 +505,39 @@ alongside the `morning` (07:05, agent session, morning-routine skill)
 and `evening` (22:00, main session, `rotate_session`) jobs, plus a
 silent `preconscious-decay` pass (06:01, `session: "none"`, the skill's
 daily decay script), whichever of the four are missing; `faff init`
-cannot, because there is no channel to deliver to yet. The evening job's own turn has no tools: it
-leaves a note of what mattered in the history, and the memory flush
-inside rotation is what writes the files. A no-tools completion
-(isolated, main, heartbeat escalation) that emits tool-call syntax
-as text is re-prompted once and errors rather than delivering raw
-XML to the channel. A `context: "heartbeat"` run first
-invokes the heartbeat skill's watchdog (zero tokens: file existence,
-timestamps and thresholds, written to
-`skills-data/heartbeat/triggers.json`), then reads it. On `attention` it
-skips straight to a full run with the trigger context and HEARTBEAT.md
-in the prompt (the cron bootstrap does not load the file, and without
-it a missed morning produced the missed-morning line and nothing the
-checklist asked for); otherwise a cheap gate evaluates HEARTBEAT.md (~100 tokens; `NO_REPLY` ends the run) and
-only substantive findings escalate. Escalation frames the gate's answer neutrally (compose what the user should hear, plainly) rather than as an alert, which inflated one-line gate answers into themed monologues. The gate's system prompt frames
-the file as things to watch plus standing instructions that are acted
-on every time; asked only whether anything "needs attention", it
-answered NO_REPLY to "always report the current time". Missing or empty HEARTBEAT.md means
-no model call at all.
+cannot, because there is no channel to deliver to yet. The evening job's
+own turn has no tools: it leaves a note of what mattered in the history,
+and the memory flush inside rotation is what writes the files. A
+no-tools completion (isolated, main, heartbeat escalation) that emits
+tool-call syntax as text is re-prompted once and errors rather than
+delivering raw XML to the channel.
+
+A `context: "heartbeat"` run first invokes the heartbeat skill's
+watchdog (zero tokens: file existence, timestamps and thresholds,
+written to `skills-data/heartbeat/triggers.json`), then reads it.
+`HEARTBEAT.md` is read through the same always-trusted check as the
+bootstrap files: a symlink or a case-mismatched name is ignored with a
+warning. On `attention` the run skips straight to a full completion on
+`cron_default` with the trigger context and HEARTBEAT.md in the prompt
+(the cron bootstrap does not load the file). Otherwise a cheap gate on
+the `heartbeat` route evaluates HEARTBEAT.md (~100 tokens; `NO_REPLY`
+ends the run); its system prompt frames the file as things to watch
+plus standing instructions that are acted on every time. A substantive
+gate answer escalates to `cron_default`, which is asked to compose what
+the user should hear, plainly, not to raise an alert. Missing or empty
+HEARTBEAT.md means no model call at all.
+
+No step of the heartbeat has tools. The gate and escalation see
+HEARTBEAT.md, the current time and the triggers, so the file holds only
+checks answerable from those. A watch that needs a tool or the web is a
+`session: "none"` job on a skill whose `run` script prints `NO_REPLY`
+or the message (see the session modes above); the heartbeat and
+cron-manager skills tell the agent so. The watchdog has two triggers,
+`morning_missed` and `learnings_full`, each raised once per day
+(`reported.json`).
 
 The watchdog runs inline rather than as its own cron job, so it cannot
-drift out of step with the heartbeat that reads it; a separate
-`session: "none"` job is still supported for anyone who wants it on a
-different schedule. The gate is routed by `heartbeat` and escalation by
+drift out of step with the heartbeat that reads it. The gate is routed by `heartbeat` and escalation by
 `cron_default`, because detecting that something is worth saying and
 composing what to say are different jobs, and only the gate runs on
 every heartbeat.

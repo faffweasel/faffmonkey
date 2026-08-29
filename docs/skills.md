@@ -22,7 +22,7 @@ There are three ways a skill gets run, and they all reach the same script:
 
 - **The agent decides to.** `skill_invoke` is the tool the agent calls; you never type it. Saying "remind me on Friday" or "what's the weather" is enough.
 - **You run it directly** with the `/skill` slash command, in Telegram, Discord or `faff chat`: `/skill <name>` shows the SKILL.md, `/skill <name> <action> [args]` runs the script with no model involved. Handy for checking what a skill actually returns.
-- **Cron** runs a skill's `run.py` on a schedule with `session: "none"`.
+- **Cron** runs a skill's `run.py` on a schedule with `session: "none"`. `run.py` is the skill's unattended entry point: it takes no arguments, keeps its settings and state in `SKILL_DATA`, and prints either `NO_REPLY` or a message. With `deliver: announce` the message goes straight to the channel and `NO_REPLY` sends nothing, so a skill can watch something (a threshold, a change, a due reminder) at zero token cost. Empty output is recorded as a failed run, so print `NO_REPLY` rather than nothing. The contrib `reminders` skill is the worked example.
 
 With just a name and no action, the full SKILL.md comes back. With an action, the matching script in `scripts/` runs and its output comes back.
 
@@ -35,7 +35,7 @@ These ship in `templates/workspace/skills/` and are copied to `workspace/skills/
 | **carry-over** | add, list, get, done, clear | Queue something to tell the user in a future session. Items have priority levels (urgent, normal, curious, simmering) and are surfaced at next session start. |
 | **document-search** | index, search | Full-text search (FTS5) over `workspace/documents/` (md, txt, csv, xlsx, pdf). |
 | **cron-manager** | list, add, update, remove, disable, enable, history | Schedule, list, and manage recurring tasks and one-shot reminders. CRUD operations on `workspace/config/jobs.json`. |
-| **heartbeat** | run | Ambient awareness. Watchdog script runs deterministic checks (file existence, timestamps, thresholds) and writes `triggers.json`. The scheduler's heartbeat handler reads triggers and decides whether to call the LLM. |
+| **heartbeat** | run | Ambient awareness. Watchdog script runs deterministic checks (file existence, timestamps, thresholds) and writes `triggers.json`. The scheduler's heartbeat handler reads triggers and decides whether to call the LLM, which sees only `HEARTBEAT.md` and the clock; watches that need a tool are cron jobs, not heartbeat lines. |
 | **memory-search** | index, search | Search across all memory files. FTS5 keyword search, optional vector semantic search, or hybrid (RRF merge). Index is incremental (SHA-256 content hashing), refreshed before every search and by the runtime after each memory flush and daily note. |
 | **morning-routine** | prepare, stamp | Daily startup: read carry-over, check preconscious buffer, gather overnight cron data, compose a greeting. Triggered by cron, not invoked directly. |
 | **preconscious** | add, read, run, drop_lowest | Track what should be top-of-mind for the next few days. Scored buffer of max 5 items with Currency (freshness) and Importance scores. Items decay daily and fade naturally. |
@@ -103,7 +103,7 @@ Examples:
 | Skill | Data directory contents |
 |-------|------------------------|
 | carry-over | `queue.json` |
-| heartbeat | `config.json`, `triggers.json`, `queue.json` |
+| heartbeat | `config.json`, `triggers.json`, `reported.json` |
 | memory-search | `index.sqlite`, `config.json` |
 | preconscious | `buffer.json` |
 
