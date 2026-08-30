@@ -109,6 +109,39 @@ def _check_provider(config: object) -> str:
         return RED
 
 
+def _check_routing(config: object, state_dir: Path, workspace_dir: Path) -> str:
+    """A route or job naming a slot that is not in models fails when that
+    task runs, not at load. Only routes written in config.json are checked:
+    the defaults for cheap and vision have runtime fallbacks."""
+    from faffmonkey.config import Config
+    if not isinstance(config, Config):
+        return YELLOW
+
+    try:
+        raw_routing = json.loads((state_dir / "config.json").read_text()).get("routing", {})
+    except (OSError, json.JSONDecodeError, AttributeError):
+        raw_routing = {}
+    dangling: list[tuple[str, str]] = []
+    if isinstance(raw_routing, dict):
+        dangling.extend(
+            (f"routing.{task}", str(slot)) for task, slot in raw_routing.items()
+            if slot not in config.models
+        )
+    dangling.extend(
+        (f"job {job.id!r}", job.model) for job in load_jobs(workspace_dir)
+        if job.model and job.model not in config.models
+    )
+    if not dangling:
+        _print_check("Model routing", GREEN, f"slots: {', '.join(sorted(config.models))}")
+        return GREEN
+    for where, slot in dangling:
+        _print_check(
+            "Model routing", RED, f"{where} names slot {slot!r}, not in models",
+            "Add the slot to models in state/config.json, or change the route",
+        )
+    return RED
+
+
 def _check_context_window(config: object, state_dir: Path) -> str:
     """The conversation slot's window against what the provider says.
     A slot without context_window runs on the 128000 default whatever
@@ -576,6 +609,8 @@ def run_doctor(base: Path) -> int:
             has_red = True
         else:
             _check_context_window(config, state_dir)
+        if _check_routing(config, state_dir, workspace_dir) == RED:
+            has_red = True
         if _check_channels(config, base=base) == RED:
             has_red = True
     else:

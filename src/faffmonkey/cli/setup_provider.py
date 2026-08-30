@@ -579,11 +579,10 @@ def _update_config_models(
             slot["context_window"] = context_windows[name]
         return slot
 
-    merge_config(config_path, "models", {
-        "main": entry(model),
-        "cheap": entry(cheap_model),
-        "vision": entry(vision_model),
-    })
+    # Slot by slot: the wizard owns main, cheap and vision. Any other slot
+    # in models is the user's and stays.
+    for slot, name in (("main", model), ("cheap", cheap_model), ("vision", vision_model)):
+        merge_config(config_path, "models", entry(name), subkey=slot)
 
 
 def _pick_ollama_model(default_model: str) -> str:

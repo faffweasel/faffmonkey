@@ -35,7 +35,7 @@ faffmonkey` shows the one-line reason.
 | Command | What it does |
 |---|---|
 | `faff init` | Create `workspace/`, `state/`, templates, config. Safe to re-run; never overwrites identity files |
-| `faff setup provider` | Configure the LLM provider and the `main`, `cheap`, `vision` slots |
+| `faff setup provider` | Configure the LLM provider and the `main`, `cheap`, `vision` slots; other slots are left as they are |
 | `./bin/faff setup telegram\|discord\|search\|voice` | Install a contrib extension and write its config (host only) |
 | `faff chat` | Interactive terminal session |
 | `faff run` | Channels plus scheduler; what the container runs |

@@ -18,6 +18,7 @@ from faffmonkey.cli.doctor import (
     _check_extensions,
     _check_heartbeat,
     _check_location,
+    _check_routing,
     _check_skills,
     _check_timezone,
     _safe_url,
@@ -91,6 +92,45 @@ class TestCheckDirs:
         out = capsys.readouterr().out
         assert "workspace/" in out
         assert "state/" in out
+
+
+class TestCheckRouting:
+    """A slot vanished from models while a routing entry and a cron job
+    still named it. Nothing reported it until the job failed at its tick."""
+
+    def _dirs(self, tmp_path, raw_config, jobs=None):
+        state = tmp_path / "state"
+        state.mkdir()
+        (state / "config.json").write_text(json.dumps(raw_config))
+        workspace = tmp_path / "workspace"
+        (workspace / "config").mkdir(parents=True)
+        if jobs is not None:
+            (workspace / "config" / "jobs.json").write_text(json.dumps(jobs))
+        return state, workspace
+
+    def test_written_route_to_a_missing_slot_is_red(self, tmp_path, capsys):
+        state, ws = self._dirs(tmp_path, {"routing": {"dreaming": "dream"}})
+        assert _check_routing(_make_config(), state, ws) == "!!"
+        out = capsys.readouterr().out
+        assert "routing.dreaming" in out and "'dream'" in out
+
+    def test_job_model_naming_a_missing_slot_is_red(self, tmp_path, capsys):
+        state, ws = self._dirs(tmp_path, {}, jobs=[
+            {"id": "dream", "schedule": "0 3 * * *", "prompt": "dream", "model": "dream"},
+        ])
+        assert _check_routing(_make_config(), state, ws) == "!!"
+        assert "job 'dream'" in capsys.readouterr().out
+
+    def test_default_routes_to_absent_cheap_and_vision_are_not_flagged(self, tmp_path, capsys):
+        state, ws = self._dirs(tmp_path, {})
+        assert _check_routing(_make_config(), state, ws) == GREEN
+        assert "slots: main" in capsys.readouterr().out
+
+    def test_present_slots_are_green(self, tmp_path):
+        state, ws = self._dirs(tmp_path, {"routing": {"dreaming": "main"}}, jobs=[
+            {"id": "j", "schedule": "0 3 * * *", "prompt": "x", "model": "main"},
+        ])
+        assert _check_routing(_make_config(), state, ws) == GREEN
 
 
 class TestCheckLocation:

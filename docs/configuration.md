@@ -39,8 +39,10 @@ displayed timestamp uses it. `faff init` detects it and asks.
 ### models
 
 A map of named slots. `main` is required; `faff setup provider`
-creates `main`, `cheap` and `vision`. Add any other slot you like and
-name it from a cron job's `model` field.
+creates `main`, `cheap` and `vision` and leaves every other slot as it
+is. Add any other slot you like and name it from a cron job's `model`
+field or a `routing` entry; `faff doctor` goes red on a route or job
+that names a slot not in this map.
 
 | Field | Default | Description |
 |---|---|---|

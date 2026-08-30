@@ -278,6 +278,54 @@ class TestDetectContextWindow:
                 assert detect_context_window("https://api.example/v1", "key", model) is None
 
 
+class TestUpdateConfigModels:
+    """Re-running the wizard replaced the whole models map with main, cheap
+    and vision. A hand-added slot ("dream", pointed at by a cron job) was
+    silently gone, and the job failed at its next tick."""
+
+    def _write(self, tmp_path, models):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "timezone": "UTC", "models": models,
+            "routing": {"cron_default": "main"},
+        }))
+        return config_path
+
+    def _run(self, config_path):
+        _update_config_models(
+            config_path, "ollama-local", "http://localhost:11434/v1",
+            "llama", "llama", "llava", "", {"llama": 32000},
+        )
+        return json.loads(config_path.read_text())
+
+    def test_other_slots_survive(self, tmp_path):
+        dream = {"provider": "venice", "model": "dreamer", "base_url": "https://v/api/v1",
+                 "api_key_env": "VENICE_API_KEY", "context_window": 32768}
+        config = self._run(self._write(tmp_path, {
+            "main": {"provider": "old", "model": "old", "base_url": "http://old/v1"},
+            "dream": dream,
+        }))
+        assert config["models"]["dream"] == dream
+        assert config["models"]["main"]["model"] == "llama"
+        assert config["models"]["main"]["context_window"] == 32000
+        assert config["models"]["vision"]["model"] == "llava"
+        assert config["routing"] == {"cron_default": "main"}
+
+    def test_wizard_slots_are_replaced_not_merged(self, tmp_path):
+        config = self._run(self._write(tmp_path, {
+            "main": {"provider": "old", "model": "old", "base_url": "http://old/v1",
+                     "api_key_env": "OLD_KEY", "timeout": 300},
+        }))
+        assert "api_key_env" not in config["models"]["main"]
+        assert "timeout" not in config["models"]["main"]
+
+    def test_no_models_section_yet(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({"timezone": "UTC"}))
+        config = self._run(config_path)
+        assert set(config["models"]) == {"main", "cheap", "vision"}
+
+
 class TestWizardWritesContextWindow:
     """Every slot the wizard writes carries an explicit context_window."""
 
