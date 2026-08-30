@@ -28,6 +28,7 @@ weather advice [city]      current + next two days together
 
 `advice` outputs data, not advice; the interpretation is yours. Ground it in:
 
+- the `Observed:` line first: it names the place and time OpenWeatherMap actually used. If that is not the configured city, or the numbers contradict the season or what the user says they are feeling, say the reading is wrong and stop there; do not explain it away. Wrong weather advice before a long run is a health risk.
 - feels-like vs actual temperature (wind chill: "12C but feels 8C, wear layers")
 - rain probability for today/tomorrow ("60% rain, bring an umbrella")
 - wind speed (above ~8 m/s is genuinely windy)

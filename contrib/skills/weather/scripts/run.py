@@ -112,10 +112,11 @@ def main() -> int:
     conditions = (current.get("weather") or [{}])[0].get("description", "unknown")
     wind = current.get("wind", {})
     wet, outlook = rain_outlook(forecast, now.timestamp(), lookahead, probability)
+    place, observed = weather.observation(current)
     summary = (
         f"{conditions}, {main_block.get('temp', '?')}C feels {main_block.get('feels_like', '?')}C, "
-        f"humidity {main_block.get('humidity', '?')}%, wind {wind.get('speed', '?')} m/s at {label}; "
-        f"next {lookahead}h: {outlook}"
+        f"humidity {main_block.get('humidity', '?')}%, wind {wind.get('speed', '?')} m/s at {label} "
+        f"(observed {observed} at {place}); next {lookahead}h: {outlook}"
     )
     append_reading(workspace, "weather", {
         "at": now.isoformat(timespec="seconds"),
@@ -126,6 +127,8 @@ def main() -> int:
             "humidity": main_block.get("humidity"),
             "wind": wind.get("speed"),
             "conditions": conditions,
+            "place": place,
+            "observed": observed,
             "rain_likely": wet,
             "rain_outlook": outlook,
         },

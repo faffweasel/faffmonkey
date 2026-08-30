@@ -53,6 +53,27 @@ class TestOpenrouterImageOutput:
         assert "output is required" not in result.stderr
 
 
+def _write_location(workspace: Path, lat: float, lng: float) -> None:
+    config = workspace / "config"
+    config.mkdir()
+    (config / "location.json").write_text(json.dumps(
+        {"current": {"city": "Hanoi", "lat": lat, "lng": lng}}
+    ))
+
+
+# What OpenWeatherMap returns for lat 0, lng 0 at 10:05 UTC in late August.
+_NULL_ISLAND = {
+    "coord": {"lon": 0, "lat": 0},
+    "weather": [{"description": "scattered clouds"}],
+    "main": {"temp": 21.1, "feels_like": 21.3, "humidity": 79, "pressure": 1013},
+    "wind": {"speed": 4.5, "deg": 225},
+    "dt": 1756461900,
+    "sys": {},
+    "timezone": 0,
+    "name": "",
+}
+
+
 class TestAqi:
     def test_usage_without_args(self):
         result = _run("aqi", "aqi.py", [], {})
@@ -69,6 +90,14 @@ class TestAqi:
             {"AQICN_API_KEY": "x", "WORKSPACE": str(tmp_path)},
         )
         assert "No location configured" in result.stdout
+
+    def test_multi_with_placeholder_coordinates_refused(self, tmp_path):
+        _write_location(tmp_path, 0, 0)
+        result = _run(
+            "aqi", "aqi.py", ["multi"],
+            {"AQICN_API_KEY": "x", "WORKSPACE": str(tmp_path)},
+        )
+        assert "placeholder" in result.stdout
 
     def test_location_loaded_from_workspace_env(self, tmp_path):
         config = tmp_path / "config"
@@ -751,6 +780,45 @@ class TestWeather:
         assert w.wind_direction(270) == "W"
         assert w.wind_direction(None) == "?"
 
+    # An agent that knew the city but not the coordinates wrote lat 0,
+    # lng 0. The skill queried the Gulf of Guinea, labelled the reading
+    # with the configured city, and a 30 km run was planned on 21C advice
+    # in 30C heat.
+    def test_placeholder_coordinates_refused(self, tmp_path):
+        _write_location(tmp_path, 0, 0)
+        result = _run(
+            "weather", "weather.py", ["now"],
+            {"OPENWEATHERMAP_API_KEY": "x", "WORKSPACE": str(tmp_path)},
+        )
+        assert result.returncode == 1
+        assert "placeholder" in result.stderr
+        assert "Hanoi" in result.stderr
+
+    def test_swapped_coordinates_refused(self, tmp_path):
+        _write_location(tmp_path, 105.854, 21.028)
+        result = _run(
+            "weather", "weather.py", ["now"],
+            {"OPENWEATHERMAP_API_KEY": "x", "WORKSPACE": str(tmp_path)},
+        )
+        assert result.returncode == 1
+        assert "out of range" in result.stderr
+
+    def test_sensor_refuses_placeholder_and_writes_nothing(self, tmp_path):
+        _write_location(tmp_path, 0, 0)
+        result = _run(
+            "weather", "run.py", [],
+            {"OPENWEATHERMAP_API_KEY": "x", "WORKSPACE": str(tmp_path)},
+        )
+        assert result.returncode == 1
+        assert "placeholder" in result.stderr
+        assert not (tmp_path / "readings" / "weather.jsonl").exists()
+
+    def test_current_output_names_the_point_owm_used(self, monkeypatch, tmp_path):
+        w = self._import(monkeypatch, tmp_path)
+        lines = w.format_current(_NULL_ISLAND, "Hanoi").splitlines()
+        assert lines[0] == "Current weather — Hanoi"
+        assert lines[1] == "  Observed: 10:05 local at unnamed point (0, 0)"
+
 
 class TestReminders:
     def _import(self, monkeypatch, tmp_path):
@@ -1352,6 +1420,22 @@ class TestWeatherSensor:
 
     def _trigger(self, tmp_path):
         return tmp_path / "skills-data" / "heartbeat" / "triggers.d" / "weather-rain.json"
+
+    def test_reading_records_the_point_owm_used(self, monkeypatch, tmp_path):
+        """Readings said "at Hanoi" while the coordinates pointed at the
+        Gulf of Guinea; the log must name the point the API actually used."""
+        from unittest.mock import patch
+        sensor = self._sensor(monkeypatch, tmp_path)
+        with (
+            patch.object(sensor.weather, "resolve_target", return_value=(21.028, 105.854, "Hanoi")),
+            patch.object(sensor.weather, "get_current", return_value=_NULL_ISLAND),
+            patch.object(sensor.weather, "get_forecast", return_value={"city": {"timezone": 0}, "list": []}),
+        ):
+            assert sensor.main() == 0
+        reading = json.loads((tmp_path / "readings" / "weather.jsonl").read_text().strip())
+        assert reading["data"]["place"] == "unnamed point (0, 0)"
+        assert reading["data"]["observed"] == "10:05"
+        assert "at Hanoi (observed 10:05 at unnamed point (0, 0))" in reading["summary"]
 
     def test_rain_ahead_triggers_once_per_transition(self, monkeypatch, tmp_path):
         sensor = self._sensor(monkeypatch, tmp_path)

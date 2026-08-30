@@ -10,6 +10,7 @@ from faffmonkey.cli.setup_provider import (
     detect_context_window,
 )
 from faffmonkey.config import ConfigError, load_config
+from faffmonkey.runtime.bootstrap import coordinate_problem
 from faffmonkey.runtime.scheduler import load_jobs
 from faffmonkey.runtime.tokens import count_tokens
 
@@ -525,6 +526,36 @@ def _check_jobs(workspace_dir: Path) -> str:
     return GREEN
 
 
+def _check_location(workspace_dir: Path) -> str:
+    """Coordinates the weather and aqi skills would refuse."""
+    path = workspace_dir / "config" / "location.json"
+    if not path.exists():
+        _print_check("Location", GREEN, "No location.json (optional)")
+        return GREEN
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        _print_check("Location", YELLOW, f"location.json is unreadable: {e}")
+        return YELLOW
+    loc = (data.get("current") or data) if isinstance(data, dict) else None
+    if not isinstance(loc, dict):
+        _print_check("Location", YELLOW, "location.json must hold a JSON object")
+        return YELLOW
+    city = loc.get("city") or "unnamed"
+    problem = coordinate_problem(loc)
+    if problem:
+        _print_check(
+            "Location", YELLOW, f"{city}: {problem}",
+            "Set the real lat/lng in workspace/config/location.json; the weather and aqi skills refuse these",
+        )
+        return YELLOW
+    if loc.get("lat") is None:
+        _print_check("Location", GREEN, f"{city} (no coordinates; weather and aqi need them)")
+    else:
+        _print_check("Location", GREEN, f"{city} ({loc['lat']}, {loc['lng']})")
+    return GREEN
+
+
 def run_doctor(base: Path) -> int:
     state_dir = base / "state"
     workspace_dir = base / "workspace"
@@ -571,6 +602,7 @@ def run_doctor(base: Path) -> int:
     if workspace_dir.is_dir():
         if _check_jobs(workspace_dir) == RED:
             has_red = True
+        _check_location(workspace_dir)
 
     if config is not None:
         if _check_timezone(config) == RED:

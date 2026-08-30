@@ -22,7 +22,9 @@ Stdlib only.
    ```
 
    Named cities in queries are geocoded, so the location file is only the
-   default.
+   default. `lat`/`lng` must be real: `0, 0` and out-of-range values are
+   refused with an error rather than queried. The `Observed:` line in
+   `now` output names the point and time OpenWeatherMap actually used.
 
 ## Sensor: readings and a rain alert
 

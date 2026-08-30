@@ -17,6 +17,7 @@ from faffmonkey.cli.doctor import (
     _check_dirs,
     _check_extensions,
     _check_heartbeat,
+    _check_location,
     _check_skills,
     _check_timezone,
     _safe_url,
@@ -90,6 +91,35 @@ class TestCheckDirs:
         out = capsys.readouterr().out
         assert "workspace/" in out
         assert "state/" in out
+
+
+class TestCheckLocation:
+    """A location.json with lat 0, lng 0 passed every check while the
+    weather skill reported the Gulf of Guinea as Hanoi."""
+
+    def _write(self, workspace, payload):
+        (workspace / "config").mkdir(parents=True)
+        (workspace / "config" / "location.json").write_text(json.dumps(payload))
+
+    def test_placeholder_coordinates_flagged(self, tmp_path, capsys):
+        self._write(tmp_path, {"current": {"city": "Hanoi", "lat": 0, "lng": 0}})
+        assert _check_location(tmp_path) == YELLOW
+        out = capsys.readouterr().out
+        assert "Hanoi" in out and "placeholder" in out
+
+    def test_real_coordinates_ok(self, tmp_path, capsys):
+        self._write(tmp_path, {"current": {"city": "Hanoi", "lat": 21.028, "lng": 105.854}})
+        assert _check_location(tmp_path) == GREEN
+        assert "21.028" in capsys.readouterr().out
+
+    def test_no_file_is_optional(self, tmp_path, capsys):
+        assert _check_location(tmp_path) == GREEN
+        assert "optional" in capsys.readouterr().out
+
+    def test_unreadable_file_flagged(self, tmp_path, capsys):
+        (tmp_path / "config").mkdir()
+        (tmp_path / "config" / "location.json").write_text("{not json")
+        assert _check_location(tmp_path) == YELLOW
 
 
 class TestCheckConfig:

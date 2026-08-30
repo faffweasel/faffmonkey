@@ -22,6 +22,7 @@ from faffmonkey.runtime.bootstrap import (
     _read_file,
     _read_location,
     _write_queue_atomic,
+    coordinate_problem,
     load_bootstrap,
 )
 
@@ -174,6 +175,44 @@ class TestReadLocation:
         config.mkdir()
         (config / "location.json").write_text("not json")
         assert _read_location(tmp_path) == ""
+
+
+class TestCoordinateProblem:
+    """The agent wrote lat 0, lng 0 for Hanoi. Nothing in the runtime
+    noticed, and the weather skill reported the Gulf of Guinea as Hanoi."""
+
+    def test_placeholder_zero_zero(self):
+        assert "placeholder" in coordinate_problem({"city": "Hanoi", "lat": 0, "lng": 0})
+
+    def test_swapped_lat_lng(self):
+        assert "out of range" in coordinate_problem({"lat": 105.854, "lng": 21.028})
+
+    def test_strings_that_are_not_numbers(self):
+        assert "not both numbers" in coordinate_problem({"lat": "north", "lng": "east"})
+
+    def test_real_coordinates_pass(self):
+        assert coordinate_problem({"lat": 21.028, "lng": 105.854}) == ""
+
+    def test_absent_coordinates_are_not_a_problem(self):
+        assert coordinate_problem({"city": "Lisbon", "timezone": "Europe/Lisbon"}) == ""
+
+    def test_read_location_warns_but_still_names_the_city(self, tmp_path, caplog):
+        config = tmp_path / "config"
+        config.mkdir()
+        (config / "location.json").write_text(json.dumps(
+            {"current": {"city": "Hanoi", "lat": 0, "lng": 0}}
+        ))
+        with caplog.at_level(logging.WARNING, logger="faffmonkey.runtime.bootstrap"):
+            assert _read_location(tmp_path) == "Location: Hanoi"
+        assert "placeholder" in caplog.text
+
+    def test_read_location_is_quiet_without_coordinates(self, tmp_path, caplog):
+        config = tmp_path / "config"
+        config.mkdir()
+        (config / "location.json").write_text(json.dumps({"city": "Lisbon"}))
+        with caplog.at_level(logging.WARNING, logger="faffmonkey.runtime.bootstrap"):
+            assert _read_location(tmp_path) == "Location: Lisbon"
+        assert caplog.text == ""
 
 
 class TestEnsureWorkspaceFiles:

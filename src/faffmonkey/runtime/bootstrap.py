@@ -289,6 +289,28 @@ def _load_preconscious(workspace: Path) -> str:
     return "\n".join(lines)
 
 
+def coordinate_problem(loc: dict) -> str:
+    """Why the weather and aqi skills will refuse a location's lat/lng, or "".
+
+    Absent coordinates are fine: the timezone skills need only the city and
+    zone. Present but unusable ones are not. 0,0 is a placeholder, not a
+    place: it is a real point in the Gulf of Guinea and would be reported
+    under the configured city's name.
+    """
+    lat, lng = loc.get("lat"), loc.get("lng")
+    if lat is None and lng is None:
+        return ""
+    try:
+        lat, lng = float(lat), float(lng)
+    except (TypeError, ValueError):
+        return f"lat {lat!r}, lng {lng!r} are not both numbers"
+    if lat == 0 and lng == 0:
+        return "lat and lng are both 0, a placeholder that points at the Gulf of Guinea"
+    if not -90 <= lat <= 90 or not -180 <= lng <= 180:
+        return f"lat {lat}, lng {lng} is out of range (lat -90..90, lng -180..180)"
+    return ""
+
+
 def _read_location(workspace: Path) -> str:
     loc_path = workspace / "config" / "location.json"
     if not loc_path.exists():
@@ -309,6 +331,11 @@ def _read_location(workspace: Path) -> str:
         if not isinstance(loc, dict):
             return ""
         city = loc.get("city", "")
+        problem = coordinate_problem(loc)
+        if problem:
+            logger.warning(
+                "config/location.json: %s; the weather and aqi skills refuse it", problem,
+            )
         return f"Location: {city}" if city else ""
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("failed to read %s: %s", loc_path, e)

@@ -52,6 +52,19 @@ def wind_direction(degrees) -> str:
         return "?"
 
 
+def coordinate_problem(lat: float, lng: float) -> str:
+    """Why these coordinates must not be queried, or "" if they may be.
+
+    0,0 is a placeholder, not a place: it is a real point in the Gulf of
+    Guinea and would be reported under the configured city's name.
+    """
+    if lat == 0 and lng == 0:
+        return "lat and lng are both 0, a placeholder, not a place"
+    if not -90 <= lat <= 90 or not -180 <= lng <= 180:
+        return f"lat {lat}, lng {lng} is out of range (lat -90..90, lng -180..180)"
+    return ""
+
+
 def _load_location():
     """Return (lat, lon, city) from workspace/config/location.json or None."""
     path = Path(WORKSPACE) / "config" / "location.json"
@@ -63,7 +76,10 @@ def _load_location():
     lat, lng = loc.get("lat"), loc.get("lng")
     if lat is None or lng is None:
         return None
-    return float(lat), float(lng), loc.get("city", "configured location")
+    try:
+        return float(lat), float(lng), loc.get("city", "configured location")
+    except (TypeError, ValueError):
+        return None
 
 
 def _fetch(path: str, params: dict) -> dict:
@@ -114,6 +130,15 @@ def resolve_target(city_arg: str | None):
             file=sys.stderr,
         )
         sys.exit(1)
+    lat, lng, city = loc
+    problem = coordinate_problem(lat, lng)
+    if problem:
+        print(
+            f"Error: config/location.json for {city}: {problem}; "
+            "set the real coordinates (see HUMAN.md)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     return loc
 
 
@@ -129,14 +154,31 @@ def _local(ts: int, offset_seconds: int) -> datetime:
     return datetime.fromtimestamp(ts, tz=timezone(timedelta(seconds=offset_seconds)))
 
 
+def observation(data: dict) -> tuple[str, str]:
+    """(place, local time) OpenWeatherMap says a current reading is for.
+
+    The header names the configured city; this names the point the API
+    actually used, so the two can be compared.
+    """
+    coord = data.get("coord") or {}
+    place = data.get("name") or "unnamed point"
+    if coord.get("lat") is not None and coord.get("lon") is not None:
+        place += f" ({coord['lat']}, {coord['lon']})"
+    ts = data.get("dt")
+    when = _local(int(ts), data.get("timezone", 0)).strftime("%H:%M") if ts else "?"
+    return place, when
+
+
 def format_current(data: dict, label: str) -> str:
     main = data.get("main", {})
     weather = (data.get("weather") or [{}])[0]
     wind = data.get("wind", {})
     sys_block = data.get("sys", {})
     offset = data.get("timezone", 0)
+    place, when = observation(data)
 
     lines = [f"Current weather — {label}"]
+    lines.append(f"  Observed: {when} local at {place}")
     lines.append(
         f"  Conditions: {weather.get('description', 'unknown')}"
     )

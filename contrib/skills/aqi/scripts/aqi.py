@@ -142,6 +142,19 @@ def get_stations_in_bounds(lat1, lng1, lat2, lng2):
     return results
 
 
+def _coordinate_problem(lat: float, lng: float) -> str:
+    """Why these coordinates must not be queried, or "" if they may be.
+
+    0,0 is a placeholder, not a place: it is a real point in the Gulf of
+    Guinea and would be reported under the configured city's name.
+    """
+    if lat == 0 and lng == 0:
+        return "lat and lng are both 0, a placeholder, not a place"
+    if not -90 <= lat <= 90 or not -180 <= lng <= 180:
+        return f"lat {lat}, lng {lng} is out of range (lat -90..90, lng -180..180)"
+    return ""
+
+
 def _load_location():
     """
     Load location from workspace/config/location.json.
@@ -250,6 +263,9 @@ def get_local_multi():
     if not loc:
         return {"error": "No location configured — check location.json"}
     lat, lng, city = loc
+    problem = _coordinate_problem(lat, lng)
+    if problem:
+        return {"error": f"location.json for {city}: {problem}; set the real coordinates"}
 
     stations = get_stations_in_bounds(
         lat - radius, lng - radius, lat + radius, lng + radius

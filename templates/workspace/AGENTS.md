@@ -37,7 +37,13 @@
 
 ## Location
 
-`config/location.json`: `current` is where the user is now; `home`, if present, is their permanent base. The runtime and the location skills read `current`.
+`config/location.json`: `current` is where the user is now; `home`, if present, is their permanent base. The runtime and the location skills read `current`. Shape:
+
+```json
+{"current": {"city": "Hanoi", "country": "Vietnam", "timezone": "Asia/Bangkok", "lat": 21.028, "lng": 105.854}}
+```
+
+`lat` and `lng` are queried directly by the weather and aqi skills, which refuse `0, 0` and out-of-range values. Never write placeholders. If you do not know the coordinates, get them (`weather now <city>` geocodes the name and prints the point it used) or ask; leave the two fields out rather than guess.
 
 - Temporary move ("I'm in Bangkok this week"): update `current` only.
 - Permanent move: update both, and give the user the `TZ=` line for `state/.env`.

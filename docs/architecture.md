@@ -329,7 +329,7 @@ image installs them if present. The core image has zero pip packages.
 
 A skill is a directory under `workspace/skills/`: `SKILL.md` (required)
 plus optional `scripts/`, `references/`, `assets/`, and a `HUMAN.md`.
-Runtime data lives separately in `workspace/skills-data/<name>/`, and so does a skill's own configuration; `config/` holds only cross-skill files (`location.json`) and the restricted `jobs.json`.
+Runtime data lives separately in `workspace/skills-data/<name>/`, and so does a skill's own configuration; `config/` holds only cross-skill files (`location.json`) and the restricted `jobs.json`. `location.json` coordinates are checked by `bootstrap.coordinate_problem` (a warning at prompt assembly, and a `faff doctor` line): `0,0` and out-of-range values are placeholders, and the weather and aqi skills refuse them rather than query a real point under the configured city's name.
 
 **Two documents per skill.** SKILL.md is LLM-facing runtime
 instruction: when to invoke, actions, how to interpret output. HUMAN.md
