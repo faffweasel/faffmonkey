@@ -43,7 +43,7 @@ faffmonkey` shows the one-line reason.
 | `faff doctor` | Check everything; exits non-zero on a red |
 | `faff cron list` | Jobs with next fire time |
 | `faff cron run <id>` | Run a job now and print its output. Never delivers to a channel |
-| `faff cron history <id>` | Last runs of a job with status and duration |
+| `faff cron history <id>` | Last runs of a job with status and duration; the log keeps 14 days |
 | `faff trust status` | Which workspace files are trusted, untrusted, or always trusted |
 | `faff trust <path>` / `faff untrust <path>` | Trust or untrust a workspace file or directory |
 | `faff skill install <name>` / `faff skill list` | Optional skills from `contrib/skills/` (weather, reminders, calendar, ...; list in [skills.md](skills.md)) |

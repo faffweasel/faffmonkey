@@ -473,7 +473,8 @@ success); a deterministic 0-5 minute stagger for top-of-hour jobs
 (schedule at minute 1 to bypass), applied as a deadline the tick fires
 past rather than a window it has to land inside; JSONL run logs per job
 in `state/logs/cron/`, timestamped in UTC and rendered in the config
-timezone at display time; output of a bare `NO_REPLY` (quotes,
+timezone at display time, kept for 14 days and at most 2000 lines per
+job; output of a bare `NO_REPLY` (quotes,
 backticks and trailing punctuation tolerated) suppresses delivery; a stale-ack guard re-prompts once when the response looks
 like "on it" rather than a result; `faff cron list|run|history` for
 operations. `faff cron run` has no channels, so it prints the job's

@@ -68,8 +68,8 @@ RECENT_DELIVERY_CHARS = 500
 # for indefinitely.
 MAX_RECORDED_PROMPT_CHARS = 200
 
-_MAX_LOG_BYTES = 1 * 1024 * 1024
-_MAX_LOG_LINES_KEEP = 500
+_RUN_LOG_KEEP_DAYS = 14
+_RUN_LOG_KEEP_LINES = 2000
 _MAX_LOG_LINES_READ = 200
 
 # How far back a tick will look for a fire it owes. Wide enough to cover
@@ -350,7 +350,21 @@ def _run_sort_key(raw: str) -> datetime:
     return parse_timestamp(raw, timezone.utc) or datetime.min.replace(tzinfo=timezone.utc)
 
 
+def _expired(line: str, cutoff: datetime) -> bool:
+    """A line is expired only if its timestamp parses and is before cutoff;
+    one that cannot be dated cannot be aged out."""
+    try:
+        stamp = json.loads(line).get("timestamp", "")
+    except (json.JSONDecodeError, AttributeError):
+        return False
+    parsed = parse_timestamp(stamp, timezone.utc)
+    return parsed is not None and parsed < cutoff
+
+
 def _log_run(state_dir: Path, run: RunLog) -> None:
+    """Append one run. Entries older than _RUN_LOG_KEEP_DAYS are dropped
+    and the file is capped at _RUN_LOG_KEEP_LINES, so a daily job's history
+    is a fortnight, not the life of the install."""
     log_dir = state_dir / "logs" / "cron"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"{run.job_id}.jsonl"
@@ -362,12 +376,19 @@ def _log_run(state_dir: Path, run: RunLog) -> None:
     }
     if run.error is not None:
         entry["error"] = run.error
+    cutoff = datetime.now(timezone.utc) - timedelta(days=_RUN_LOG_KEEP_DAYS)
     with _file_lock(log_path):
-        if log_path.exists() and log_path.stat().st_size > _MAX_LOG_BYTES:
+        try:
             lines = log_path.read_text().splitlines()
-            log_path.write_text("\n".join(lines[-_MAX_LOG_LINES_KEEP:]) + "\n")
-        with open(log_path, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+        except OSError:
+            lines = []
+        kept = [line for line in lines if not _expired(line, cutoff)][-(_RUN_LOG_KEEP_LINES - 1):]
+        kept.append(json.dumps(entry))
+        if len(kept) == len(lines) + 1:
+            with open(log_path, "a") as f:
+                f.write(kept[-1] + "\n")
+        else:
+            log_path.write_text("\n".join(kept) + "\n")
 
 
 def prune_cron_logs(state_dir: Path, live_job_ids: set[str]) -> list[str]:

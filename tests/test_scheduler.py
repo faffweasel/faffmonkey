@@ -474,6 +474,11 @@ class TestOneShotDelete:
 
 # -- JSONL logging --
 
+def _ago(**delta) -> str:
+    """A run-log timestamp inside the retention window; fixed dates age out."""
+    return (datetime.now(timezone.utc) - timedelta(**delta)).isoformat(timespec="seconds")
+
+
 class TestJsonlLogging:
     def test_creates_log_file(self, tmp_path):
         state_dir = tmp_path / "state"
@@ -497,7 +502,7 @@ class TestJsonlLogging:
         state_dir = tmp_path / "state"
         for i in range(3):
             run = RunLog(
-                timestamp=f"2026-05-14T10:0{i}:00+07:00",
+                timestamp=_ago(minutes=3 - i),
                 job_id="multi",
                 status="success" if i < 2 else "error",
                 error="boom" if i == 2 else None,
@@ -538,9 +543,9 @@ class TestRecentCronRuns:
         assert recent_cron_runs(tmp_path)[0].error == "boom"
 
     def test_sorts_newest_first_across_jobs(self, tmp_path):
-        _log_run(tmp_path, RunLog(timestamp="2026-05-14T09:00:00+00:00", job_id="a", status="success"))
-        _log_run(tmp_path, RunLog(timestamp="2026-05-14T11:00:00+00:00", job_id="b", status="success"))
-        _log_run(tmp_path, RunLog(timestamp="2026-05-14T10:00:00+00:00", job_id="a", status="success"))
+        _log_run(tmp_path, RunLog(timestamp=_ago(hours=3), job_id="a", status="success"))
+        _log_run(tmp_path, RunLog(timestamp=_ago(hours=1), job_id="b", status="success"))
+        _log_run(tmp_path, RunLog(timestamp=_ago(hours=2), job_id="a", status="success"))
         assert [r.job_id for r in recent_cron_runs(tmp_path)] == ["b", "a", "a"]
 
     def test_sorts_by_instant_across_timestamp_formats(self, tmp_path):
@@ -564,16 +569,12 @@ class TestRecentCronRuns:
 
     def test_honours_limit(self, tmp_path):
         for i in range(5):
-            _log_run(tmp_path, RunLog(
-                timestamp=f"2026-05-14T1{i}:00:00+00:00", job_id="a", status="success",
-            ))
+            _log_run(tmp_path, RunLog(timestamp=_ago(hours=5 - i), job_id="a", status="success"))
         assert len(recent_cron_runs(tmp_path, limit=2)) == 2
 
     def test_limit_none_returns_all(self, tmp_path):
         for i in range(5):
-            _log_run(tmp_path, RunLog(
-                timestamp=f"2026-05-14T1{i}:00:00+00:00", job_id="a", status="success",
-            ))
+            _log_run(tmp_path, RunLog(timestamp=_ago(hours=5 - i), job_id="a", status="success"))
         assert len(recent_cron_runs(tmp_path, limit=None)) == 5
 
     def test_skips_malformed_lines_but_keeps_rest(self, tmp_path):
@@ -2833,38 +2834,48 @@ class TestStaleAckConfigured:
 # -- security fix: log rotation --
 
 class TestLogRotation:
-    def test_log_file_rotated_when_exceeding_max_size(self, tmp_path):
-        from faffmonkey.runtime.scheduler import _MAX_LOG_BYTES, _MAX_LOG_LINES_KEEP
+    """Run logs only trimmed on size, so a daily job kept every run for
+    years and `cron history` showed a week-old failure as if it were news."""
+
+    def _seed(self, tmp_path, entries):
         state_dir = tmp_path / "state"
         log_dir = state_dir / "logs" / "cron"
         log_dir.mkdir(parents=True)
-        log_path = log_dir / "big-job.jsonl"
+        (log_dir / "job.jsonl").write_text("".join(
+            json.dumps({"timestamp": ts, "status": status, "duration_ms": 0, "tokens": {}}) + "\n"
+            for ts, status in entries
+        ))
+        return state_dir
 
-        line = json.dumps({"timestamp": "t", "status": "success", "duration_ms": 0, "tokens": {}})
-        line_size = len(line) + 1
-        lines_needed = (_MAX_LOG_BYTES // line_size) + 100
-        log_path.write_text((line + "\n") * lines_needed)
-        assert log_path.stat().st_size > _MAX_LOG_BYTES
+    def _stamps(self, state_dir):
+        path = state_dir / "logs" / "cron" / "job.jsonl"
+        return [json.loads(line)["timestamp"] for line in path.read_text().splitlines()]
 
-        run = RunLog(
-            timestamp="2026-05-14T10:00:00+07:00",
-            job_id="big-job",
-            status="success",
-        )
-        _log_run(state_dir, run)
+    def test_log_file_capped_at_keep_lines(self, tmp_path):
+        from faffmonkey.runtime.scheduler import _RUN_LOG_KEEP_LINES
+        state_dir = self._seed(tmp_path, [("t", "success")] * (_RUN_LOG_KEEP_LINES + 100))
+        _log_run(state_dir, RunLog(timestamp="2026-05-14T10:00:00+07:00", job_id="job", status="success"))
+        assert len(self._stamps(state_dir)) == _RUN_LOG_KEEP_LINES
 
-        result_lines = log_path.read_text().strip().split("\n")
-        assert len(result_lines) <= _MAX_LOG_LINES_KEEP + 1
+    def test_entries_older_than_keep_days_dropped_on_append(self, tmp_path):
+        from faffmonkey.runtime.scheduler import _RUN_LOG_KEEP_DAYS
+        now = datetime.now(timezone.utc)
+        stale = (now - timedelta(days=_RUN_LOG_KEEP_DAYS + 1)).isoformat(timespec="seconds")
+        fresh = (now - timedelta(days=_RUN_LOG_KEEP_DAYS - 1)).isoformat(timespec="seconds")
+        state_dir = self._seed(tmp_path, [(stale, "error"), (fresh, "success")])
+        latest = now.isoformat(timespec="seconds")
+        _log_run(state_dir, RunLog(timestamp=latest, job_id="job", status="success"))
+        assert self._stamps(state_dir) == [fresh, latest]
+
+    def test_undated_lines_are_kept(self, tmp_path):
+        state_dir = self._seed(tmp_path, [("not a timestamp", "success")])
+        _log_run(state_dir, RunLog(timestamp="2026-05-14T10:00:00Z", job_id="job", status="success"))
+        assert self._stamps(state_dir) == ["not a timestamp", "2026-05-14T10:00:00Z"]
 
     def test_small_log_not_rotated(self, tmp_path):
         state_dir = tmp_path / "state"
         for i in range(5):
-            run = RunLog(
-                timestamp=f"2026-05-14T10:0{i}:00+07:00",
-                job_id="small-job",
-                status="success",
-            )
-            _log_run(state_dir, run)
+            _log_run(state_dir, RunLog(timestamp=_ago(minutes=5 - i), job_id="small-job", status="success"))
 
         log_path = state_dir / "logs" / "cron" / "small-job.jsonl"
         lines = log_path.read_text().strip().split("\n")
@@ -3611,10 +3622,10 @@ class TestCronLogRetention:
         assert {r.job_id for r in recent_cron_runs(tmp_path, limit=None)} == {"live"}
 
     def test_read_is_bounded_to_the_tail(self, tmp_path):
-        for i in range(_MAX_LOG_LINES_READ + 50):
+        total = _MAX_LOG_LINES_READ + 50
+        for i in range(total):
             _log_run(tmp_path, RunLog(
-                timestamp=f"2026-05-14T00:{i // 60:02d}:{i % 60:02d}Z",
-                job_id="j", status="success", duration_ms=i,
+                timestamp=_ago(seconds=total - i), job_id="j", status="success", duration_ms=i,
             ))
         runs = recent_cron_runs(tmp_path, limit=None)
         assert len(runs) == _MAX_LOG_LINES_READ
