@@ -11,7 +11,7 @@ Usage:
   feed_fetch.py --digest Boxing          — fetch feeds for one digest
   feed_fetch.py --url <feed_url>         — fetch a single feed URL (no dedup)
   feed_fetch.py --list                   — list configured digests and feeds
-  feed_fetch.py --days 7                 — only show items from last N days
+  feed_fetch.py --days 7                 — override the freshness window for this run
   feed_fetch.py --json                   — output as JSON
   feed_fetch.py --include-seen           — show all items (ignore dedup)
   feed_fetch.py --reset Boxing           — clear seen history for a digest
@@ -55,6 +55,12 @@ USER_AGENT = "faffmonkey"
 
 # Auto-prune seen entries older than this
 SEEN_MAX_AGE_DAYS = 90
+
+# Freshness window for a digest that does not set its own "days". The
+# window used to live in each cron job's prompt, so a job written before
+# the skill changed kept its own copy; it belongs in digests.json beside
+# the schedule it depends on.
+DEFAULT_DAYS = 7
 
 
 # --- Seen item tracking ---
@@ -344,14 +350,34 @@ def _parse_atom(root, source_url):
     return items
 
 
+def digest_days(digest, override=None):
+    """The freshness window for a digest, in days.
+
+    A --days flag wins, then the digest's own "days", then DEFAULT_DAYS.
+    A "days" that is not a positive integer is reported and ignored rather
+    than silently widening the window to everything.
+    """
+    if override:
+        return override
+    days = digest.get("days")
+    if isinstance(days, int) and not isinstance(days, bool) and days > 0:
+        return days
+    if days is not None:
+        print(
+            f"  {digest.get('name', '?')}: \"days\" must be a positive integer, "
+            f"got {days!r}; using {DEFAULT_DAYS}",
+            file=sys.stderr,
+        )
+    return DEFAULT_DAYS
+
+
 def fetch_digest_feeds(digest, days=None):
-    """Fetch all RSS feeds for a digest. Returns list of items."""
+    """Fetch all RSS feeds for a digest, within its freshness window.
+    Returns list of items."""
     rss_urls = digest.get("sources", {}).get("rss", [])
     all_items = []
 
-    cutoff = None
-    if days:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=digest_days(digest, days))
 
     for url in rss_urls:
         print(f"  Fetching: {url}", file=sys.stderr)
@@ -359,7 +385,7 @@ def fetch_digest_feeds(digest, days=None):
         items = parse_feed(xml_bytes, source_url=url)
 
         for item in items:
-            if cutoff and item["date"] and item["date"] < cutoff:
+            if item["date"] and item["date"] < cutoff:
                 continue
             all_items.append(item)
 
@@ -397,7 +423,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Digest feed fetcher with dedup")
     parser.add_argument("--digest", type=str, help="Fetch feeds for a specific digest by name")
     parser.add_argument("--url", type=str, help="Fetch a single feed URL (no dedup)")
-    parser.add_argument("--days", type=int, help="Only show items from last N days")
+    parser.add_argument("--days", type=int, help="Override the digest's freshness window (days)")
     parser.add_argument("--list", action="store_true", help="List configured digests")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument("--max", type=int, default=20, help="Max items to show (default: 20)")
@@ -456,7 +482,10 @@ if __name__ == "__main__":
                 rss = d.get("sources", {}).get("rss", [])
                 web = d.get("sources", {}).get("web_search", [])
                 seen = load_seen(d["name"])
-                print(f"\n{d['name']} (cron: {d.get('schedule', 'none')}, {len(seen)} seen)")
+                print(
+                    f"\n{d['name']} (cron: {d.get('schedule', 'none')}, "
+                    f"window: {digest_days(d)} days, {len(seen)} seen)"
+                )
                 if rss:
                     print(f"  RSS feeds ({len(rss)}):")
                     for url in rss:
@@ -484,7 +513,8 @@ if __name__ == "__main__":
         print(f"Digest: {digest['name']}", file=sys.stderr)
         print(f"{'='*60}", file=sys.stderr)
 
-        all_items = fetch_digest_feeds(digest, days=args.days)
+        days = digest_days(digest, args.days)
+        all_items = fetch_digest_feeds(digest, days=days)
 
         # Dedup
         seen = load_seen(digest["name"])
@@ -507,6 +537,7 @@ if __name__ == "__main__":
             output = {
                 "digest": digest["name"],
                 "filter": digest.get("filter", ""),
+                "days": days,
                 "web_searches": digest.get("sources", {}).get("web_search", []),
                 "rss_items": serialisable,
                 "rss_item_count": len(serialisable),
@@ -516,7 +547,10 @@ if __name__ == "__main__":
             print(json.dumps(output, indent=2))
         else:
             new_label = f" ({len(items)} new)" if seen_count > 0 else ""
-            print(f"\n{digest['name']} — {len(all_items)} RSS items, {seen_count} seen{new_label}")
+            print(
+                f"\n{digest['name']} — {len(all_items)} RSS items in the last "
+                f"{days} days, {seen_count} seen{new_label}"
+            )
             if digest.get("sources", {}).get("web_search"):
                 searches = digest["sources"]["web_search"]
                 print(f"  (also needs {len(searches)} web search(es) — run those separately)")

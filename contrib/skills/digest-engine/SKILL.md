@@ -31,13 +31,14 @@ A digest is a topic, its sources and a schedule. Sources are RSS/Atom feeds and 
            "web_search": ["openclaw agent release", "hermes agent framework news"]
          },
          "filter": "Releases, architecture changes, benchmarks and post-mortems. Skip hype, tutorials and reposts.",
+         "days": 2,
          "max_items": 8
        }
      ]
    }
    ```
 
-   The `filter` is what you will judge items against when the digest runs; write it the way the user briefed you. `schedule` records the intent; the cron job below is what actually runs it.
+   The `filter` is what you will judge items against when the digest runs; write it the way the user briefed you. `days` is the freshness window: 2 for a daily digest, 8 for a weekly one, 7 if left out. `schedule` records the intent; the cron job below is what actually runs it.
 2. `feed_fetch --list` to confirm the entry parses and the feeds respond.
 3. Add the cron job with the cron-manager skill, for example:
 
@@ -72,7 +73,7 @@ feed_fetch                          fetch all digests (dedup on)
 feed_fetch --digest NAME            one digest
 feed_fetch --digest NAME --json     structured output with seen_filtered count
 feed_fetch --url <feed_url>         single feed, no dedup
-feed_fetch --days 7                 limit to last N days
+feed_fetch --days 7                 override the digest's freshness window for this run
 feed_fetch --include-seen           bypass dedup
 feed_fetch --list                   configured digests with seen counts
 feed_fetch --seen-stats             dedup stats per digest
@@ -83,8 +84,8 @@ feed_fetch --reset NAME             clear seen history (after config changes)
 
 When a digest cron job fires:
 
-1. `feed_fetch --digest NAME --json --days 7`, returns only NEW items since the last run (dedup is automatic; previously seen items are filtered and counted in `seen_filtered`).
-2. Run each query in the digest's `web_search` list with the web_search tool; `feed_fetch` only handles RSS.
+1. `feed_fetch --digest NAME --json`, returns only NEW items within the digest's `days` window (dedup is automatic; previously seen items are filtered and counted in `seen_filtered`). The output's `days` field is the window in force.
+2. Run each query in the digest's `web_search` list with the web_search tool; `feed_fetch` only handles RSS. Search results are not deduplicated or dated for you: apply the same `days` window yourself and drop anything older, or a week-old post resurfaces every run.
 3. Combine, then filter against the digest's `filter` text. Be ruthless: the filter describes what makes the cut, everything else is dropped.
 4. Write the digest to `shared/digests/NAME-YYYY-MM-DD.md`: a heading, then one short entry per item that made the cut, with link and a one-line reason it matters.
 5. Send the digest as the message: the heading and the entries, nothing else. No item counts, no mention of filtering, nothing about what was dropped or why, no note that the file was written. The reader wants the news, not the process.

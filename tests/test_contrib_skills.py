@@ -325,6 +325,28 @@ class TestDigestEngine:
         ff = self._import(monkeypatch, tmp_path)
         assert [d["name"] for d in ff.load_digests()] == ["T"]
 
+    # 2026-08-31: the freshness window lived in each cron job's prompt
+    # ("--days 2"). Pointing the jobs at SKILL.md instead lost it, and the
+    # skill's fixed 7 took over. The window is now a field of the digest.
+    def test_days_field_precedence(self, monkeypatch, tmp_path, capsys):
+        ff = self._import(monkeypatch, tmp_path)
+        assert ff.digest_days({"name": "d"}) == ff.DEFAULT_DAYS
+        assert ff.digest_days({"name": "d", "days": 2}) == 2
+        assert ff.digest_days({"name": "d", "days": 2}, override=30) == 30
+        for bad in ("2", 0, -1, True, 1.5):
+            assert ff.digest_days({"name": "d", "days": bad}) == ff.DEFAULT_DAYS
+        assert "must be a positive integer" in capsys.readouterr().err
+
+    def test_digest_days_bounds_the_fetch(self, monkeypatch, tmp_path):
+        ff = self._import(monkeypatch, tmp_path)
+        monkeypatch.setattr(ff, "fetch_feed", lambda url, timeout=20: _RSS_SAMPLE)
+        digest = {"name": "d", "sources": {"rss": ["https://ex.com/feed"]}}
+        # First post is dated 2026-08-03; the undated second post always passes.
+        titles = lambda items: [i["title"] for i in items]
+        assert titles(ff.fetch_digest_feeds({**digest, "days": 2})) == ["Second post"]
+        assert titles(ff.fetch_digest_feeds({**digest, "days": 36500})) == ["First post", "Second post"]
+        assert titles(ff.fetch_digest_feeds({**digest, "days": 2}, days=36500)) == ["First post", "Second post"]
+
 
 class TestSkillDataConfigLocations:
     """2026-08-24: single-consumer skill configs lived in config/, which the
