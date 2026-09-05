@@ -32,7 +32,7 @@ actions: pick_word
 
 When the user replies with a bare number 0-5 shortly after a word was sent:
 
-1. `pick_word --stats` is not needed; the state file tracks the last word. Run `pick_word --feedback <last word id> <score>` (the daily word output included the id; if unsure, check `--history 1`).
+1. Run `pick_word --feedback last <score>`. The state file tracks the last word sent, so no id lookup is needed; the daily word was sent from a different session and `--history` only lists words already scored.
 2. Acknowledge in one short phrase in the bridge language, mentioning when it will return ("back in 3 days"). Nothing more.
 
 ## Progress questions

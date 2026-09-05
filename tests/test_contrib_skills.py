@@ -1187,6 +1187,36 @@ class TestWordDaily:
         state = json.loads((tmp_path / "sd" / "word-state.json").read_text())
         assert state["words"][picked["id"]]["last_score"] == 2
 
+    def test_hard_word_returns_next_day(self, tmp_path):
+        """2026-09-05: a score of 1 promised 'back tomorrow', but the picker
+        excluded yesterday's word before checking whether it was due, so a
+        hard word could never come back the next day."""
+        picked = json.loads(self._run_pick(tmp_path).stdout)
+        self._run_pick(tmp_path, ["--feedback", picked["id"], "1"])
+        state_path = tmp_path / "sd" / "word-state.json"
+        state = json.loads(state_path.read_text())
+        today = state["words"][picked["id"]]["last_feedback"]
+        state["words"][picked["id"]]["next_review"] = today
+        state_path.write_text(json.dumps(state))
+        again = json.loads(self._run_pick(tmp_path).stdout)
+        assert again["id"] == picked["id"]
+        assert again["reason"] == "review_hard"
+
+    def test_feedback_last_targets_last_sent_not_last_scored(self, tmp_path):
+        """2026-09-05: the score reply arrives in a different session from the
+        cron that sent the word, and --history only lists scored words, so
+        the agent had no reliable way to find the id it was scoring."""
+        first = json.loads(self._run_pick(tmp_path).stdout)
+        self._run_pick(tmp_path, ["--feedback", first["id"], "3"])
+        second = json.loads(self._run_pick(tmp_path).stdout)
+        out = json.loads(self._run_pick(tmp_path, ["--feedback", "last", "1"]).stdout)
+        assert out["word_id"] == second["id"]
+        assert out["word_id"] != first["id"]
+
+    def test_feedback_last_before_any_word_sent(self, tmp_path):
+        out = json.loads(self._run_pick(tmp_path, ["--feedback", "last", "1"]).stdout)
+        assert "error" in out
+
     def test_invalid_feedback_rejected(self, tmp_path):
         self._run_pick(tmp_path)
         result = self._run_pick(tmp_path, ["--feedback", "g01", "9"])

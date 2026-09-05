@@ -9,6 +9,7 @@ _meta block, so the same engine serves any learning/bridge language pair.
 Usage:
   pick_word.py                    — pick today's word (JSON output)
   pick_word.py --feedback ID 3    — record score (0-5) for a word
+  pick_word.py --feedback last 3  — record score for the last word sent
   pick_word.py --stats            — learning progress
   pick_word.py --history N        — last N words with feedback
   pick_word.py --categories       — categories and counts
@@ -133,18 +134,20 @@ def pick_word(words: dict, state: dict):
     new_words: dict[str, list[str]] = {level: [] for level in LEVEL_ORDER}
 
     for wid, word in words.items():
-        if wid == last_id:
-            continue
         status = word_status(state, wid)
         if status == "skip":
+            continue
+        # A score of 1 schedules the word for tomorrow, so yesterday's word
+        # is exactly what should come back; only the other buckets avoid it.
+        if status == "hard" and is_due(state, wid):
+            hard_due.append(wid)
+        elif wid == last_id:
             continue
         elif status == "known" and not is_due(state, wid):
             continue
         elif status == "new":
             level = word.get("level", "beginner")
             new_words.setdefault(level if level in new_words else "beginner", []).append(wid)
-        elif status == "hard" and is_due(state, wid):
-            hard_due.append(wid)
         elif is_due(state, wid):
             review_due.append(wid)
 
@@ -168,6 +171,12 @@ def pick_word(words: dict, state: dict):
 
 
 def apply_feedback(state: dict, word_id: str, feedback: str) -> dict:
+    # The daily word is sent from a cron session, so the session handling
+    # the score reply has not seen its id; "last" resolves to what was sent.
+    if word_id == "last":
+        word_id = state["stats"].get("last_word_id")
+        if not word_id:
+            return {"error": "No word has been sent yet"}
     ws = state["words"].get(word_id, {})
     feedback = feedback.strip()
     try:
@@ -266,7 +275,7 @@ def main() -> None:
     if "--feedback" in args:
         idx = args.index("--feedback")
         if idx + 2 >= len(args):
-            print("Usage: pick_word.py --feedback WORD_ID SCORE  (0=skip, 1-5)")
+            print("Usage: pick_word.py --feedback WORD_ID|last SCORE  (0=skip, 1-5)")
             sys.exit(1)
         print(json.dumps(
             apply_feedback(state, args[idx + 1], args[idx + 2]),
