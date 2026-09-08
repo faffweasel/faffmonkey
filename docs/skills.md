@@ -86,9 +86,18 @@ docker compose run --rm faffmonkey faff skill install weather
 
 A key goes in `state/.env`, then `docker compose up -d` (not `restart`: compose injects `.env` when it creates the container, and a restart keeps the old environment).
 
-Install copies the directory to `workspace/skills/<name>/` and records provenance in `workspace/skills/.origin.json` with a directory content hash. Skills are live on creation and `workspace/` is a volume, so no rebuild or restart is needed. Contrib skills are stdlib-only; nothing is added to `requirements.extra.txt`.
+Install copies the directory to `workspace/skills/<name>/` and records provenance in `workspace/skills/.origin.json` with a directory content hash. Skills are live on creation and `workspace/` is a volume, so the installed skill needs no rebuild or restart. Contrib skills are stdlib-only; nothing is added to `requirements.extra.txt`.
 
-Rules: install refuses to overwrite a same-named skill that did not come from contrib; re-running on an unmodified install updates it; a locally modified install needs `--force`. `faff update` reports stale or modified contrib installs alongside stale extensions.
+The copy comes from wherever `faff` is running. Inside the container that is `/app/contrib`, a snapshot of the checkout taken when the image was last built; a `git pull` does not change it. So after pulling a contrib fix, either rebuild before installing, or install from the host, which reads the checkout directly:
+
+```bash
+docker compose build && docker compose up -d
+docker compose run --rm faffmonkey faff skill install word-daily --force
+# or, without a rebuild:
+./bin/faff skill install word-daily --force
+```
+
+Rules: install refuses to overwrite a same-named skill that did not come from contrib; re-running on an unmodified install updates it; a locally modified install needs `--force`. `faff update` reports stale or modified contrib installs alongside stale extensions, but it compares against the same contrib it would install from, so inside a container built before the fix it reports the old install as current.
 
 Each contrib skill ships a `SKILL.md` (runtime instructions for the agent) and a `HUMAN.md` (setup and configuration notes for you). Read the HUMAN.md after installing; a skill that declares a `requires` env var you have not set is silently absent from the catalog (see "Load-time gating" below) and the agent will say it cannot do that.
 

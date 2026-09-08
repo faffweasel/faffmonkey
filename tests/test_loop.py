@@ -2248,6 +2248,27 @@ class TestUsageResetsWithTheSession:
 
         assert loop.usage_total.total_tokens == 0
 
+    def test_nightly_rotation_resets_the_counter(self, tmp_path):
+        """The 23:50 rotate_session job deactivates the session from another
+        thread; the loop adopted the new session but kept counting, so
+        /status reported tokens since the container started."""
+        from faffmonkey.runtime.session import SessionStore
+
+        loop = AgentLoop(
+            resolve_provider=lambda m: _make_provider("ok"),
+            config=_make_config(),
+            channel=NoopChannel(),
+            db_path=tmp_path / "sessions.db",
+        )
+        loop.handle_message("hello")
+        loop.usage_total = TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15)
+
+        store = SessionStore(tmp_path / "sessions.db")
+        store.deactivate_session(loop._session_id)
+        loop.handle_message("/status")
+
+        assert loop.usage_total.total_tokens == 0
+
 
 class TestGoalStateIsVisible:
     """P8-16: faff status read a file nothing ever wrote."""

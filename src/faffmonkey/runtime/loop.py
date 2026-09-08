@@ -883,6 +883,9 @@ class AgentLoop:
             return
         self._session_id = session.id
         self.history = self._store.get_history(session.id)
+        # Same reason as clear_history: /status reports this per session,
+        # and the nightly rotation is how most sessions end.
+        self.usage_total = TokenUsage()
 
     def _check_history_dirty(self) -> None:
         """Reload a session another thread has written to.

@@ -316,8 +316,13 @@ git pull
 ./bin/faff update
 docker compose build
 ./bin/faff update-extension telegram      # for each extension update reports as stale
+./bin/faff skill install word-daily       # for each contrib skill update reports as stale
 docker compose up -d
 ```
+
+Run the extension and skill refreshes from the host, as shown. Inside
+the container they copy from the image's snapshot of `contrib/`, which
+is only as new as the last build.
 
 `faff update` also works via `docker compose run` for routine updates;
 the one-time data-root migration and the build-mirror refresh need the
