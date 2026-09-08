@@ -70,8 +70,7 @@ def check_learnings_full(workspace: Path, max_entries: int) -> list[str]:
     except OSError:
         return []
     # self-review writes "## [TAG-YYYYMMDD-NNN] label" headings; hand-written
-    # files use bullets. Counting only bullets meant a file full of
-    # self-review entries counted as zero and this never fired.
+    # files use bullets. Count both.
     entries = sum(
         1 for line in content.splitlines()
         if line.startswith("## [") or line.strip().startswith("- ")
@@ -84,9 +83,8 @@ def check_learnings_full(workspace: Path, max_entries: int) -> list[str]:
 def _once_a_day(triggers: list[str], skill_data: Path, key: str, today: str) -> list[str]:
     """Raise a trigger the first time it is seen on a given day, then not again.
 
-    A missed morning stayed true on every hourly tick until midnight, so the
-    heartbeat escalated and messaged the user about it every hour of the
-    day. Once is the news; the rest is nagging.
+    A missed morning stays true on every tick until midnight, and once is
+    the news; the rest is nagging.
     """
     if not triggers:
         return triggers

@@ -96,9 +96,8 @@ def _validate_job(job: dict) -> str | None:
     if has_prompt and has_skill:
         return "cannot have both 'prompt' and 'skill'"
 
-    # Must match load_jobs in the scheduler. Validating against a different
-    # default meant a job written without a session was checked as one thing
-    # and then run as another.
+    # Must match load_jobs in the scheduler, or a job written without a
+    # session is checked as one thing and run as another.
     session = job.get("session", "agent")
     if session not in VALID_SESSIONS:
         return f"invalid session: {session!r} (expected: {', '.join(sorted(VALID_SESSIONS))})"
@@ -139,8 +138,8 @@ def _validate_job(job: dict) -> str | None:
     if "rotate_session" in job:
         if not isinstance(job["rotate_session"], bool):
             return "rotate_session must be a boolean"
-        # The scheduler rejects this too. Accepting it here meant an isolated
-        # job could flush memory and rotate a main session it never ran in.
+        # The scheduler rejects this too: an isolated job must not flush
+        # memory and rotate a main session it never ran in.
         if job["rotate_session"] and session != "main":
             return f"rotate_session is only valid on session 'main', not {session!r}"
 
@@ -171,9 +170,8 @@ def main() -> None:
         print(f"error: {error}", file=sys.stderr)
         sys.exit(1)
 
-    # Read, edit and write inside the scheduler's lock. Without it this
-    # rewrote the whole list from a stale read and could resurrect a
-    # one-shot the scheduler had just deleted.
+    # Read, edit and write inside the scheduler's lock, so a stale read
+    # cannot resurrect a one-shot the scheduler has just deleted.
     with locked_jobs(jobs_path) as jobs:
         existing_ids = {j.get("id") for j in jobs}
         if new_job["id"] in existing_ids:

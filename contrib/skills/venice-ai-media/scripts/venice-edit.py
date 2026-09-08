@@ -8,7 +8,6 @@ import json
 import sys
 from pathlib import Path
 
-# Import shared utilities
 sys.path.insert(0, str(Path(__file__).parent))
 from venice_common import (
     load_config,
@@ -38,43 +37,36 @@ def edit_image_from_file(
     Edit an image via Venice API using multipart file upload.
     Returns raw image bytes.
     """
-    # Build multipart form data
     boundary = "----VeniceEditBoundary"
     
-    # Read image
     image_data = image_path.read_bytes()
     filename = image_path.name
     mime = get_mime_type(filename)
     
     body = io.BytesIO()
     
-    # Add image file
     body.write(f'--{boundary}\r\n'.encode())
     body.write(f'Content-Disposition: form-data; name="image"; filename="{filename}"\r\n'.encode())
     body.write(f'Content-Type: {mime}\r\n\r\n'.encode())
     body.write(image_data)
     body.write(b'\r\n')
     
-    # Add prompt
     body.write(f'--{boundary}\r\n'.encode())
     body.write(b'Content-Disposition: form-data; name="prompt"\r\n\r\n')
     body.write(prompt.encode())
     body.write(b'\r\n')
     
-    # Add model ID
     body.write(f'--{boundary}\r\n'.encode())
     body.write(b'Content-Disposition: form-data; name="modelId"\r\n\r\n')
     body.write(model_id.encode())
     body.write(b'\r\n')
     
-    # Add aspect ratio if specified
     if aspect_ratio:
         body.write(f'--{boundary}\r\n'.encode())
         body.write(b'Content-Disposition: form-data; name="aspect_ratio"\r\n\r\n')
         body.write(aspect_ratio.encode())
         body.write(b'\r\n')
     
-    # End boundary
     body.write(f'--{boundary}--\r\n'.encode())
 
     return make_request(
@@ -146,7 +138,6 @@ def main() -> int:
         return 2
     api_key = require_api_key()
 
-    # Handle --list-models
     if args.list_models:
         try:
             models = list_models(api_key, "inpaint")
@@ -156,15 +147,12 @@ def main() -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
-    # Prompt is required for editing
     if not args.prompt:
         print("Error: --prompt is required for editing", file=sys.stderr)
         return 2
 
-    # Resolve input: --input flag takes priority over positional
     args.image = args.input_flag or args.image
 
-    # Validate input
     if not args.image and not args.url:
         print("Error: Either image path or --url is required", file=sys.stderr)
         return 2
@@ -172,7 +160,6 @@ def main() -> int:
         print("Error: Provide either image path or --url, not both", file=sys.stderr)
         return 2
 
-    # Validate model if not skipped
     if not args.no_validate:
         exists, available = validate_model(api_key, args.model, "inpaint")
         if not exists and available:
@@ -180,13 +167,11 @@ def main() -> int:
             print(f"Available edit models: {', '.join(available)}", file=sys.stderr)
             return 2
     
-    # Handle URL input
     if args.url:
         if not args.url.startswith(("http://", "https://")):
             print("Error: URL must start with http:// or https://", file=sys.stderr)
             return 2
         
-        # Determine output path for URL input
         if args.output:
             out_path = Path(args.output).expanduser()
         else:
@@ -213,13 +198,11 @@ def main() -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
     else:
-        # Handle file input
         image_path = Path(args.image).expanduser()
         if not image_path.exists():
             print(f"Error: Image not found: {image_path}", file=sys.stderr)
             return 2
         
-        # Determine output path
         if args.output:
             out_path = Path(args.output).expanduser()
         else:
@@ -249,7 +232,6 @@ def main() -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
     
-    # Detect actual format from response bytes and fix extension
     actual_ext = detect_image_ext(result)
     if out_path.suffix.lower() != actual_ext:
         out_path = out_path.with_suffix(actual_ext)

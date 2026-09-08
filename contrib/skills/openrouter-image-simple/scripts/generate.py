@@ -22,7 +22,6 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-# Import shared utilities
 sys.path.insert(0, str(Path(__file__).parent))
 from openrouter_common import (
     DEFAULT_API_URL,
@@ -177,9 +176,9 @@ def generate_image(prompt: str, output_path: str, input_image_path: str | None =
 def default_output() -> str:
     """shared/media/openrouter/<date>-<time>.png under the workspace.
 
-    Venice keeps flat per-command folders under shared/media/; this skill made the
-    agent invent a path and it chose a bare shared/images/<name>.png, so
-    nothing said when an image was made or kept the two skills together.
+    Matches venice-ai-media's flat per-command folders under shared/media/,
+    so both skills' output sits together and the filename says when it was
+    made.
     """
     workspace = os.environ.get("WORKSPACE", "") or os.getcwd()
     stamp = dt.datetime.now().strftime("%Y-%m-%d-%H%M%S")

@@ -10,7 +10,6 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-# Import shared utilities
 sys.path.insert(0, str(Path(__file__).parent))
 from venice_common import (
     load_config,
@@ -135,10 +134,8 @@ def retrieve_video(
             content_type = resp.headers.get("Content-Type", "")
 
             if "video/" in content_type:
-                # Video is ready
                 return "COMPLETED", resp.read(), {}
 
-            # Still processing - JSON response
             data = json.loads(resp.read().decode("utf-8"))
             status = data.get("status", "UNKNOWN")
             timing_info = {
@@ -206,7 +203,6 @@ def main() -> int:
         return 2
     api_key = require_api_key()
 
-    # Handle --complete (cleanup)
     if args.complete:
         try:
             success = complete_video(api_key, args.model, args.complete)
@@ -220,7 +216,6 @@ def main() -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
-    # Handle --list-models
     if args.list_models:
         try:
             models = list_models(api_key, "video")
@@ -230,9 +225,7 @@ def main() -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
-    # Handle --quote (price estimate)
     if args.quote:
-        # Determine audio setting for quote
         audio_param = None if args.skip_audio_param else (args.audio if args.audio is not None else True)
         
         try:
@@ -258,7 +251,6 @@ def main() -> int:
             print(f"Error getting quote: {e}", file=sys.stderr)
             return 1
 
-    # Validate input (only if not listing models or getting quote)
     if not args.prompt:
         print("Error: --prompt is required", file=sys.stderr)
         return 2
@@ -279,7 +271,6 @@ def main() -> int:
     # no empty folder behind.
     out_dir = Path(args.out_dir).expanduser() if args.out_dir else default_out_dir("venice-video")
 
-    # Resolve media URLs
     image_url = None
     audio_url = None
 
@@ -300,10 +291,8 @@ def main() -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 2
 
-    # Determine audio setting
     audio_param = None if args.skip_audio_param else (args.audio if args.audio is not None else True)
     
-    # Queue video generation
     print(f"\nQueuing video generation...", flush=True)
     print(f"  Model: {args.model}")
     print(f"  Duration: {args.duration}")
@@ -336,7 +325,6 @@ def main() -> int:
     print(f"\nQueued successfully!", flush=True)
     print(f"  Queue ID: {queue_id}")
 
-    # Poll for completion
     print(f"\nWaiting for video generation (polling every {args.poll_interval}s, timeout {args.timeout}s)...")
 
     start_time = time.time()
@@ -360,7 +348,6 @@ def main() -> int:
             print(f"\nError retrieving video: {e}", file=sys.stderr)
             return 1
 
-        # Build status message with timing info
         timing_str = ""
         avg_time = timing_info.get("average_execution_time")
         exec_dur = timing_info.get("execution_duration")
@@ -377,14 +364,12 @@ def main() -> int:
             last_timing_shown = timing_str
 
         if status == "COMPLETED" and video_data:
-            # Save video
             timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
             filename = f"video-{timestamp}.mp4"
             out_dir.mkdir(parents=True, exist_ok=True)
             filepath = out_dir / filename
             filepath.write_bytes(video_data)
 
-            # Save metadata
             metadata = {
                 "queue_id": queue_id,
                 "model": args.model,
@@ -402,7 +387,6 @@ def main() -> int:
             print(f"\nVideo saved: {filepath.as_posix()}")
             print(f"Size: {len(video_data) / 1024 / 1024:.1f}MB")
             
-            # Print MEDIA: line for Clawdbot auto-attach
             print_media_line(filepath)
             return 0
 

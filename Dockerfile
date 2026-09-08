@@ -27,8 +27,7 @@ COPY bin/ bin/
 COPY templates/ templates/
 COPY contrib/ contrib/
 # COPY keeps the host's mode bits and makes root the owner, so a file that
-# was 0600 or 0711 on the host is unreadable by the faff user. One script
-# arrived that way and `faff skill install` failed with EACCES.
+# is 0600 or 0711 on the host would be unreadable by the faff user.
 RUN chmod -R a+rX src bin templates contrib \
     && chmod +x bin/faff && ln -s /app/bin/faff /usr/local/bin/faff
 

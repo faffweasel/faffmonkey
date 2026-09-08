@@ -113,10 +113,6 @@ def run_backup(base: Path) -> int:
 def run_restore(base: Path, name: str, force: bool = False) -> int:
     """Restore a snapshot over the data root.
 
-    A backup nobody can restore from is not a backup, and there was no
-    restore path at all: the operator was expected to work out the tarball
-    layout themselves, on the day they had just lost a disk.
-
     The existing data is snapshotted first, so a restore of the wrong
     tarball is itself recoverable. Old state-only tarballs (top-level
     config.json) still restore, into state/.
@@ -168,12 +164,10 @@ def run_restore(base: Path, name: str, force: bool = False) -> int:
             safety = snapshot_data(base, backups_dir)
             print(f"  current data saved to: {safety.name}")
 
-        # Only once the archive is known good. Extracting over the existing
-        # tree made this a merge, not a restore: anything absent from the
-        # tarball survived, so restoring a pre-cron backup left
-        # cron-state.json in place and the scheduler honoured backoff for
-        # jobs the restored config does not contain. backups/ is never
-        # cleared: the safety snapshot is in it, and on the legacy layout
+        # Only once the archive is known good. Clear first: extracting over
+        # the existing tree is a merge, so anything absent from the tarball
+        # (cron-state.json, say) would survive. backups/ is never cleared:
+        # the safety snapshot is in it, and on the legacy layout
         # state/backups also holds compaction checkpoints.
         def _clear_state_contents(d: Path) -> None:
             for entry in d.iterdir():

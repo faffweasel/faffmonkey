@@ -1,9 +1,8 @@
 """Locked read-modify-write for queue.json.
 
 The runtime reads this same file under an fcntl lock during bootstrap
-(runtime/bootstrap.py:_locked_queue). These scripts did not, so a
-bootstrap running while the agent added an item could lose whichever
-write finished second.
+(runtime/bootstrap.py, _locked_queue), so a bootstrap and an add cannot
+lose each other's write.
 """
 
 import fcntl

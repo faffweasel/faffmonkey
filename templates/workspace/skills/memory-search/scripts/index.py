@@ -303,9 +303,8 @@ def ensure_config(skill_data: Path) -> None:
         "max_chunk_chars": 1600,
         "search_top_k": 10,
         "recency_half_life_days": 30,
-        # Embeddings are off by default: memory content is personal data,
-        # and with "auto" plus any configured API key it was sent to a
-        # remote embedding endpoint without the operator ever opting in.
+        # Embeddings are off by default: memory content is personal data
+        # and goes only where the operator explicitly points it.
         "embedding": {
             "provider": "none",
             "providers": {
@@ -351,7 +350,6 @@ def run_index(workspace: Path, skill_data: Path, force: bool = False) -> str:
             else:
                 total += count
 
-        # clean stale entries
         indexed_files = {str(f.relative_to(workspace)) for f in files}
         db_files = {row[0] for row in conn.execute("SELECT file_path FROM file_hashes").fetchall()}
         stale = db_files - indexed_files

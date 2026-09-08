@@ -43,8 +43,8 @@ def add_item(buffer_file: Path, description: str, c: int, i: int) -> str:
         data["items"].sort(key=lambda x: x["c"] + x["i"], reverse=True)
         dropped = data["items"].pop()
         if dropped is new_item:
-            # Reporting "Added: x" then "Dropped: x" told the agent it had
-            # recorded something it had not.
+            # The new item lost the cut, so report it as not added rather
+            # than added-then-dropped.
             save_buffer(buffer_file, data)
             return (
                 f"Not added: buffer is full and every item scores higher "

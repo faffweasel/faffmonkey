@@ -9,7 +9,6 @@ import re
 import sys
 from pathlib import Path
 
-# Import shared utilities
 sys.path.insert(0, str(Path(__file__).parent))
 from venice_common import (
     load_config,
@@ -185,7 +184,6 @@ def main() -> int:
         return 2
     api_key = require_api_key()
 
-    # Handle --list-models
     if args.list_models:
         try:
             models = list_models(api_key, "image")
@@ -195,7 +193,6 @@ def main() -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
-    # Handle --list-styles
     if args.list_styles:
         try:
             styles = list_styles(api_key)
@@ -210,7 +207,6 @@ def main() -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
-    # Validate model if not skipped
     if not args.no_validate:
         exists, available = validate_model(api_key, args.model, "image")
         if not exists and available:
@@ -227,7 +223,6 @@ def main() -> int:
         out_path = Path(args.output).expanduser()
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Infer format from extension
         ext = out_path.suffix.lower().lstrip(".")
         fmt = ext if ext in ("jpeg", "jpg", "png", "webp") else "webp"
         if fmt == "jpg":
@@ -271,7 +266,7 @@ def main() -> int:
         print_media_line(out_path)
         return 0
 
-    # --- Batch mode (original behaviour) ---
+    # --- Batch mode ---
     auto_out_dir = args.out_dir is None
     out_dir = Path(args.out_dir).expanduser() if args.out_dir else default_out_dir("venice-image")
     out_dir.mkdir(parents=True, exist_ok=True)

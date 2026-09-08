@@ -68,8 +68,8 @@ def _group_id(update: Update) -> str | None:
 def _normalise_command(text: str) -> str:
     """In groups Telegram sends commands as /help@botname; the runtime
     matches on the bare command. /start is what the Start button sends on
-    first contact, and the runtime has no such command, so the first thing
-    a new chat saw was "Unknown command"."""
+    first contact and the runtime has no such command, so it maps to
+    /help."""
     if not text.startswith("/"):
         return text
     head, sep, rest = text.partition(" ")
@@ -233,10 +233,9 @@ class TelegramChannel:
     def _load_chat_id(self) -> int | None:
         """The chat this bot last replied in, from a previous process.
 
-        Without this, a cron job firing after a container restart and before
-        the operator has said anything found no chat id, returned from send()
-        without raising, and the scheduler recorded the run as delivered. The
-        briefing was in the session and had gone nowhere.
+        Without this, a cron job firing after a restart and before the
+        operator has spoken has no chat id: send() returns without raising
+        and the scheduler records the run as delivered.
         """
         if self._state_path is None or not self._state_path.is_file():
             return None
@@ -330,10 +329,9 @@ class TelegramChannel:
             images.append(dest)
         self._queue.put(InboundMessage(
             sender_id=sender_id,
-            # Metadata, not attributed speech. "What is this?" was persisted
-            # as the operator's own words, so the history recorded a question
-            # nobody asked. Discord already words it this way, and loop.py
-            # carries the same fix for missing transcriptions.
+            # Metadata, not attributed speech: the placeholder is persisted
+            # as the operator's own words, so it must not read as a question
+            # they asked.
             text=update.effective_message.caption or "(sent a photo)",
             channel_id=self.channel_id,
             timestamp=datetime.now(timezone.utc),
@@ -353,12 +351,10 @@ class TelegramChannel:
         if self._inbox is not None:
             self._inbox.mkdir(parents=True, exist_ok=True)
             # Path(...).name strips any directory part: doc.file_name is
-            # remote-controlled, and the allow-list admits everyone when
-            # no allowed_users is configured, which is the default.
+            # remote-controlled.
             safe_name = Path(doc.file_name).name if doc.file_name else ""
-            # Path("..").name is "..", not "", so the fallback below did not
-            # fire and the destination resolved to the inbox's own parent.
-            # The download then wrote file content at a directory path.
+            # Path("..").name is "..", not "", so it needs its own check or
+            # the destination resolves to the inbox's parent.
             if safe_name in ("..", "."):
                 safe_name = ""
             dest = self._inbox / (safe_name or f"doc_{file.file_unique_id}")

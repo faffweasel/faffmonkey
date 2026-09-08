@@ -156,20 +156,17 @@ INGREDIENT_ALIASES = {
 def normalise_ingredient(name):
     """Normalise ingredient name to table key."""
     n = name.lower().strip().replace("_", " ")
-    # Check aliases first
     if n in INGREDIENT_ALIASES:
         return INGREDIENT_ALIASES[n]
-    # Try hyphenated version
     hyphenated = n.replace(" ", "-")
     if hyphenated in INGREDIENTS:
         return hyphenated
-    # Try as-is
     if n in INGREDIENTS:
         return n
     return None
 
 
-# --- Standard unit conversions (unchanged) ---
+# --- Standard unit conversions ---
 
 CONVERSIONS = {
     # Distance
@@ -275,11 +272,9 @@ def convert_ingredient(value, from_unit, to_unit, ingredient_key):
     f = normalise(from_unit)
     t = normalise(to_unit)
 
-    # Convert source to cups (if volume) or grams (if weight)
     cups_value = None
     grams_value = None
 
-    # Source is volume → convert to cups first
     if f == "cups":
         cups_value = value
     elif f == "tbsp":
@@ -290,7 +285,6 @@ def convert_ingredient(value, from_unit, to_unit, ingredient_key):
         cups_value = value / 236.588
     elif f == "l":
         cups_value = value * 1000 / 236.588
-    # Source is weight → convert to grams first
     elif f == "g":
         grams_value = value
     elif f == "kg":
@@ -302,13 +296,11 @@ def convert_ingredient(value, from_unit, to_unit, ingredient_key):
     else:
         return None, f"Unsupported unit for ingredient conversion: {f}"
 
-    # Cross-convert via density
     if cups_value is not None and grams_value is None:
         grams_value = cups_value * grams_per_cup
     elif grams_value is not None and cups_value is None:
         cups_value = grams_value / grams_per_cup
 
-    # Now convert grams/cups to target unit
     if t == "g":
         result = grams_value
     elif t == "kg":
@@ -330,7 +322,6 @@ def convert_ingredient(value, from_unit, to_unit, ingredient_key):
     else:
         return None, f"Unsupported target unit for ingredient conversion: {t}"
 
-    # Format
     if abs(result) >= 100:
         return result, f"{result:,.1f}"
     elif abs(result) >= 1:
@@ -408,7 +399,6 @@ if __name__ == "__main__":
     from_unit = sys.argv[2]
     to_unit = sys.argv[3]
 
-    # Ingredient mode (4th arg)
     if len(sys.argv) >= 5:
         ingredient_raw = " ".join(sys.argv[4:])
         ingredient_key = normalise_ingredient(ingredient_raw)
@@ -427,7 +417,6 @@ if __name__ == "__main__":
         print(f"  (density: {INGREDIENTS[ingredient_key]}g per cup)")
 
     else:
-        # Standard conversion
         result = convert(value, from_unit, to_unit)
         if result is None:
             f = normalise(from_unit)

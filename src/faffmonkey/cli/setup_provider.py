@@ -77,9 +77,9 @@ def _read_api_key_env_name(
     """The name of the environment variable that will hold a key, never the
     key itself.
 
-    The prompt read "API key env var" and people pasted the key. The wizard
-    then echoed the whole key back inside an "Invalid name" error and
-    exited, so the secret landed in the terminal scrollback for nothing.
+    The prompt must make clear it wants a name, not a key: a pasted key
+    would otherwise be echoed back in the error and land in terminal
+    scrollback.
     """
     hint = f"Enter for {default}" if default else "blank if none"
     while True:
@@ -365,10 +365,10 @@ EVENING_JOB = {
     "rotate_session": True,
 }
 
-# The preconscious skill's buffer decays by a daily run of its decay
-# script; the skill assumed the job existed and no wizard created it, so
-# items never decayed. No LLM, no delivery: its product is the updated
-# buffer. 06:01 keeps the buffer fresh for the 07:05 morning routine.
+# The preconscious buffer decays only by a daily run of its decay script,
+# so this wizard creates the job. No LLM, no delivery: its product is the
+# updated buffer. 06:01 keeps the buffer fresh for the 07:05 morning
+# routine.
 PRECONSCIOUS_DECAY_JOB = {
     "id": "preconscious-decay",
     "schedule": "1 6 * * *",
@@ -636,7 +636,8 @@ def run_setup_provider(state_dir: Path, provider_dir: Path | None = None) -> Non
             print("Base URL is required for custom providers.")
             raise SystemExit(1)
         # load_config rejects names that do not match _API_KEY_ENV_RE, so
-        # accepting one here wrote a config the runtime refuses to load.
+        # accepting one here would write a config the runtime refuses to
+        # load.
         api_key_env = _read_api_key_env_name()
     else:
         base_url = provider["base_url"]

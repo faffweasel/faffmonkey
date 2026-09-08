@@ -109,9 +109,8 @@ def run_skill_install(workspace_dir: Path, name: str, force: bool = False) -> in
             )
             return 1
         # Built-in installs record source_hash, contrib installs record
-        # contrib_source_hash. Reading only one meant a skill that had
-        # moved into contrib/ skipped the modified-after-install check and
-        # went straight to the rmtree.
+        # contrib_source_hash; a skill that has moved into contrib/ may
+        # carry either.
         recorded_hash = entry.get("contrib_source_hash") or entry.get("source_hash", "")
         deployed_hash = _dir_hash(dest)
         if recorded_hash and deployed_hash != recorded_hash and not force:
@@ -121,9 +120,6 @@ def run_skill_install(workspace_dir: Path, name: str, force: bool = False) -> in
             )
             return 1
     skills_dir.mkdir(parents=True, exist_ok=True)
-    # Copy beside the destination and swap. rmtree-then-copytree left a
-    # half-copied tree on any interruption, and the next attempt reported
-    # it as a local modification that never happened.
     _replace_tree(src, dest)
     print(f"  Installed contrib/skills/{name} -> {dest}")
 

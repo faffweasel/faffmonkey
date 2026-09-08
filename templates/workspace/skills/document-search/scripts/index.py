@@ -123,11 +123,9 @@ def _reindex_file(conn: sqlite3.Connection, rel: str, path: Path, content_hash: 
         segments = extract_text(path)
     except Exception as e:
         # Deliberately broad. A corrupt or misnamed file fails in whatever
-        # way its parser chooses: a .xlsx that is not a zip raises
-        # BadZipFile, a truncated PDF raises from its own library. Catching
-        # only ValueError and OSError let one bad file abort the whole run,
-        # and because the commit happens after the loop, every chunk
-        # indexed before it was discarded too.
+        # way its parser chooses (a .xlsx that is not a zip raises
+        # BadZipFile, a truncated PDF raises from its own library), and one
+        # bad file must not abort the run.
         print(f"  skipped {rel}: {type(e).__name__}: {e}", file=sys.stderr)
         conn.execute("DELETE FROM files WHERE source_file = ?", (rel,))
         return 0

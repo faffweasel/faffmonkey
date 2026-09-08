@@ -19,7 +19,6 @@ def _snapshot(root: Path, backups_dir: Path) -> None:
     tar_path = snapshot_data(root, backups_dir)
     print(f"  snapshot: {tar_path}")
 
-    # rotate: keep last N
     snapshots = sorted(backups_dir.glob("*.tar.gz"))
     while len(snapshots) > MAX_SNAPSHOTS:
         oldest = snapshots.pop(0)
@@ -40,9 +39,8 @@ def _run_migrations(state_dir: Path) -> None:
         print(f"  database: unreadable ({e}); skipping migration check")
         return
     try:
-        # doctor already degrades gracefully here; this copy did not, and
-        # it is the one in the command that mutates state. A zero-byte
-        # sessions.db made faff update unusable entirely.
+        # A damaged sessions.db must not make faff update unusable; report
+        # and skip the migration check.
         row = conn.execute("SELECT version FROM schema_version").fetchone()
     except sqlite3.Error as e:
         print(f"  database: unreadable ({e}); skipping migration check")
@@ -97,7 +95,6 @@ def _sync_templates(workspace: Path) -> None:
                 print(f"  copied: {src.name}")
                 count += 1
 
-    # sync skill directories
     template_skills = template_workspace / "skills"
     if template_skills.is_dir():
         count += _sync_builtin_skills(template_skills, workspace, root)
@@ -267,9 +264,8 @@ def _ext_short_name(filename: str) -> str:
 def _contrib_root(base: Path) -> Path:
     """Where contrib/ lives: the checkout, not the data root.
 
-    Origin entries record sources relative to the project root. Resolving
-    them against base only worked while the two were the same directory;
-    after the data-root split every contrib install read as unverifiable.
+    Origin entries record sources relative to the project root, so they
+    resolve against the checkout, not the data root.
     """
     try:
         return _find_project_root()
@@ -559,19 +555,18 @@ def run_update_extension(base: Path, name: str) -> int:
     if not extensions_dir.is_dir():
         print("No extensions/ directory.")
         return 1
-    # Inside the container this died halfway with a raw OSError on the .bak.
+    # extensions/ is mounted read-only in the container; fail up front
+    # rather than halfway through on the .bak.
     from faffmonkey.cli.init import ensure_extensions_writable
     ensure_extensions_writable(
         extensions_dir, f"update-extension {name}", "restart: docker compose restart",
     )
 
-    # map short name to filename in origin.json
     try:
         origin = json.loads(origin_path.read_text()) if origin_path.exists() else {}
     except (json.JSONDecodeError, OSError):
         origin = {}
 
-    # find the matching entry
     matches = sorted(
         filename for filename in origin
         if filename == name or _ext_short_name(filename) == name
@@ -618,11 +613,9 @@ def run_update_extension(base: Path, name: str) -> int:
         print("Already up to date.")
         return 0
 
-    # backup current
     if ext_path.exists():
-        # Versioned. A single fixed .bak name meant the first update
-        # succeeded and every later one refused, permanently, without
-        # naming the remedy, while doctor kept advising the command.
+        # Versioned, so a second update is not refused because the .bak
+        # from the first still exists.
         bak_path = _next_backup_path(ext_path)
         if bak_path is None:
             print(

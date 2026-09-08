@@ -11,7 +11,6 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-# Import shared utilities
 sys.path.insert(0, str(Path(__file__).parent))
 from venice_common import (
     make_request,
@@ -36,12 +35,10 @@ def upscale_image_from_file(
     Upscale an image via Venice API using multipart file upload.
     Returns raw image bytes.
     """
-    # Build multipart form data
     boundary = "----VeniceUpscaleBoundary"
     
     parts = []
     
-    # Add image file
     image_data = image_path.read_bytes()
     filename = image_path.name
     mime = get_mime_type(filename)
@@ -52,21 +49,18 @@ def upscale_image_from_file(
         f'Content-Type: {mime}\r\n\r\n'
     )
     
-    # Add scale parameter
     parts.append(
         f'--{boundary}\r\n'
         f'Content-Disposition: form-data; name="scale"\r\n\r\n'
         f'{scale}\r\n'
     )
     
-    # Add enhance parameter
     parts.append(
         f'--{boundary}\r\n'
         f'Content-Disposition: form-data; name="enhance"\r\n\r\n'
         f'{"true" if enhance else "false"}\r\n'
     )
     
-    # Optional parameters
     if enhance_prompt:
         parts.append(
             f'--{boundary}\r\n'
@@ -88,7 +82,6 @@ def upscale_image_from_file(
             f'{replication}\r\n'
         )
     
-    # Build body
     body = io.BytesIO()
     body.write(parts[0].encode())
     body.write(image_data)
@@ -145,7 +138,6 @@ def upscale_image_from_url(
     if image_url.startswith(("http://", "https://")):
         image_url = _fetch_url_as_base64(image_url)
     elif image_url.startswith("data:"):
-        # Extract base64 from data URL
         if ";base64," in image_url:
             image_url = image_url.split(";base64,", 1)[1]
     
@@ -191,7 +183,6 @@ def main() -> int:
     ap.add_argument("--output", "-o", help="Output filename (default: auto-generated)")
     args = ap.parse_args()
 
-    # Validate input
     if not args.image and not args.url:
         print("Error: Either image path or --url is required", file=sys.stderr)
         return 2
@@ -201,13 +192,11 @@ def main() -> int:
 
     api_key = require_api_key()
     
-    # Handle URL input
     if args.url:
         if not args.url.startswith(("http://", "https://")):
             print("Error: URL must start with http:// or https://", file=sys.stderr)
             return 2
         
-        # Determine output path for URL input
         if args.output:
             out_path = Path(args.output).expanduser()
         else:
@@ -236,13 +225,11 @@ def main() -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
     else:
-        # Handle file input
         image_path = Path(args.image).expanduser()
         if not image_path.exists():
             print(f"Error: Image not found: {image_path}", file=sys.stderr)
             return 2
         
-        # Determine output path
         if args.output:
             out_path = Path(args.output).expanduser()
         else:
@@ -272,7 +259,6 @@ def main() -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
     
-    # Detect actual format from response bytes and fix extension
     actual_ext = detect_image_ext(result)
     if out_path.suffix.lower() != actual_ext:
         out_path = out_path.with_suffix(actual_ext)

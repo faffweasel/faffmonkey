@@ -86,9 +86,7 @@ def validate_skill(skill_path: str | Path) -> tuple[bool, str]:
         if frontmatter is None:
             return False, "Invalid frontmatter: unsupported syntax without PyYAML"
 
-    # timeout is a documented frontmatter field the runtime reads, so a
-    # skill that legitimately sets it was reported as having an unexpected
-    # key by the project's own validator.
+    # timeout is a documented frontmatter field the runtime reads.
     allowed_properties = {"name", "description", "actions", "metadata", "timeout"}
 
     unexpected_keys = set(frontmatter.keys()) - allowed_properties
@@ -167,13 +165,9 @@ if __name__ == "__main__":
 
     arg = sys.argv[1]
     # A bare name is a skill name and lives under WORKSPACE/skills/. Anything
-    # containing a separator is a path and is used as written.
-    #
-    # Scripts run with the working directory set to workspace/, so a bare
-    # name previously resolved to workspace/<name> while skills actually
-    # live in workspace/skills/<name>. The flow this skill documents,
-    # init_skill then quick_validate with the same bare name, therefore
-    # failed with "SKILL.md not found" every single time.
+    # containing a separator is a path and is used as written. Scripts run
+    # with cwd=workspace/, so a bare name must be resolved under skills/
+    # explicitly.
     if "/" in arg or os.sep in arg:
         target = Path(arg)
     else:

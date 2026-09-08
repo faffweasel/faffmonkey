@@ -427,10 +427,8 @@ def run_init(base_path: Path) -> None:
         try:
             loaded = json.loads(config_path.read_text())
         except json.JSONDecodeError as e:
-            # Say what is actually wrong and where. "previous config was
-            # unreadable" left the operator with a renamed file and no idea
-            # which line broke it, which is the whole reason they were sent
-            # here by doctor in the first place.
+            # Say what is wrong and where: doctor sends the operator here
+            # to find out which line broke the file.
             print(f"  {config_path} is not valid JSON: {e}")
             loaded = None
         except OSError as e:

@@ -77,9 +77,8 @@ class OpenAICompatProvider:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
-        # validate_base_url honoured allow_insecure and this did not, so the
-        # documented escape hatch let a config load and then failed on every
-        # turn instead.
+        # Must honour allow_insecure the same way validate_base_url does,
+        # or a config that loads cleanly fails on every turn.
         self.allow_insecure = allow_insecure
         self._reject_unsafe_scheme()
         self._reject_cleartext_bearer()
@@ -210,13 +209,11 @@ class OpenAICompatProvider:
         text = self._coerce_content(message.get("content"))
 
         if not text.strip() and not message.get("tool_calls"):
-            # Kimi K2.6 via Ollama Cloud put its whole answer in the
-            # reasoning field and left content empty; this parser read only
-            # content, so the loop retried into the same shape and the cron
-            # runner reported "empty response after retries" with no message
-            # delivered. Reasoning text is the answer's only carrier in that
-            # shape, so it is used, and the response shape is logged either
-            # way so an empty completion is diagnosable from the log.
+            # Some models (Kimi K2.6 via Ollama Cloud) put the whole answer
+            # in the reasoning field and leave content empty. Reasoning text
+            # is the answer's only carrier in that shape, so it is used; the
+            # response shape is logged either way so an empty completion is
+            # diagnosable from the log.
             reasoning = message.get("reasoning_content") or message.get("reasoning")
             finish_reason = choice.get("finish_reason")
             if isinstance(reasoning, str) and reasoning.strip():

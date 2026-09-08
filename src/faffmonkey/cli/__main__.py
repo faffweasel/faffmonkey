@@ -20,9 +20,7 @@ from faffmonkey.seams.channel_cli import discard_typeahead
 from faffmonkey.wiring import WiringError
 
 # Where a channel's implementation lands once its extension is installed.
-# Module level and shared: doctor kept a private copy that had drifted to
-# telegram only, so a discord config with no explicit module was reported
-# broken while _build_channels resolved it fine.
+# Module level and shared with doctor so the two cannot drift.
 BUILTIN_CHANNELS: dict[str, str] = {
     "telegram": "extensions.channel_telegram.TelegramChannel",
     "discord": "extensions.channel_discord.DiscordChannel",
@@ -360,9 +358,8 @@ def _build_channels(
 def cmd_status(args: argparse.Namespace) -> None:
     state_dir = _state_dir_arg(args.state_dir)
     workspace_dir = _workspace_dir_arg(args.workspace_dir)
-    # _check_config_exists alone only proves the file is there. On a fresh
-    # init it is there and has an empty models block, so run_status died
-    # with a raw traceback before the user had done anything wrong.
+    # A fresh init writes a config with an empty models block, so check
+    # the provider too, not only that the file exists.
     if not _require_config(state_dir):
         sys.exit(1)
     from faffmonkey.cli.status import run_status

@@ -15,10 +15,8 @@ import urllib.request
 BASE_URL = "https://open.er-api.com/v6"
 USER_AGENT = "faffmonkey"
 
-# Default targets for rate display
 DEFAULT_TARGETS = ["USD", "EUR", "GBP", "JPY", "VND", "THB", "HKD", "SGD", "AUD", "TWD"]
 
-# Common name aliases
 ALIASES = {
     "dong": "VND", "vnd": "VND",
     "dollar": "USD", "dollars": "USD", "usd": "USD",
@@ -103,9 +101,7 @@ def get_rates(base_cur, targets=None):
     if targets is None:
         targets = DEFAULT_TARGETS
 
-    # Resolve target aliases
     target_codes = [resolve_currency(t) for t in targets]
-    # Remove base from targets
     target_codes = [t for t in target_codes if t != base_code]
 
     try:
@@ -117,7 +113,6 @@ def get_rates(base_cur, targets=None):
     except Exception as e:
         return {"error": str(e)}
 
-    # Filter to requested targets only
     filtered = {}
     missing = []
     for code in target_codes:
@@ -190,7 +185,6 @@ if __name__ == "__main__":
             print(f"Error: {result['error']}")
             sys.exit(1)
 
-        # Smart formatting based on result magnitude
         if result['result'] >= 1000:
             result_str = f"{result['result']:,.0f}"
         elif result['result'] >= 1:

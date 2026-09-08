@@ -134,17 +134,14 @@ def resolve_tz(name, aliases):
     """Resolve a timezone name/alias to a ZoneInfo object."""
     lookup = name.lower().strip()
 
-    # Check aliases first
     if lookup in aliases:
         return ZoneInfo(aliases[lookup])
 
-    # Try as IANA name directly
     try:
         return ZoneInfo(name)
     except (ZoneInfoNotFoundError, KeyError):
         pass
 
-    # Try common patterns
     for prefix in ["Asia/", "Europe/", "America/", "Australia/", "Pacific/", "Africa/"]:
         try:
             return ZoneInfo(f"{prefix}{name.title()}")
@@ -162,7 +159,6 @@ def parse_time(time_str):
     """
     s = time_str.strip().lower()
 
-    # Try HH:MM with optional am/pm
     m = re.match(r'^(\d{1,2}):(\d{2})\s*(am|pm|a|p)?$', s)
     if m:
         hour, minute = int(m.group(1)), int(m.group(2))
@@ -174,14 +170,12 @@ def parse_time(time_str):
                 hour += 12
             elif ampm.startswith('a') and hour == 12:
                 hour = 0
-        # Only the bare-HH branch checked its range, so "25:00" and "12:99"
-        # returned out-of-range values and the caller handed the user a
-        # ValueError traceback from datetime.replace().
+        # Range-check every branch: an out-of-range hour or minute would
+        # surface as a ValueError from datetime.replace().
         if not (0 <= hour <= 23 and 0 <= minute <= 59):
             return None
         return hour, minute
 
-    # Try H am/pm or Hpm (no colon)
     m = re.match(r'^(\d{1,2})\s*(am|pm|a|p)$', s)
     if m:
         hour = int(m.group(1))
@@ -194,7 +188,6 @@ def parse_time(time_str):
             hour = 0
         return hour, 0
 
-    # Try bare HH (24h)
     m = re.match(r'^(\d{1,2})$', s)
     if m:
         hour = int(m.group(1))
@@ -212,7 +205,6 @@ def format_time(dt, reference_date=None):
 
     base = f"{dt.strftime('%H:%M %A %d %B')} ({abbr}, {offset_formatted})"
 
-    # Show date-change indicator if different from reference
     if reference_date and dt.date() != reference_date:
         diff_days = (dt.date() - reference_date).days
         if diff_days == 1:
@@ -277,13 +269,11 @@ def time_diff(tz1_name, tz2_name, aliases):
     now1 = datetime.now(tz1)
     now2 = datetime.now(tz2)
 
-    # Offset difference in hours
     off1 = now1.utcoffset().total_seconds() / 3600
     off2 = now2.utcoffset().total_seconds() / 3600
     diff = off2 - off1
 
     sign = "+" if diff >= 0 else ""
-    # Format as integer if whole hours, else show .5
     if diff == int(diff):
         diff_str = f"{sign}{int(diff)}h"
     else:
@@ -299,7 +289,6 @@ def time_diff(tz1_name, tz2_name, aliases):
         f"Difference: {tz2_name} is {diff_str} from {tz1_name}",
     ]
 
-    # Practical note about overlap
     if abs(diff) <= 3:
         lines.append(f"Good overlap for calls/meetings.")
     elif abs(diff) <= 8:

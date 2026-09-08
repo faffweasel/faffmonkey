@@ -16,9 +16,8 @@ def _find_active_main_session(conn: sqlite3.Connection) -> str | None:
 
 def _fetch_messages(conn: sqlite3.Connection, session_id: str) -> list[dict]:
     rows = conn.execute(
-        # images is part of a message. Omitting it made `faff export --format
-        # json` a lossy backup of a conversation containing photos, under a
-        # test named test_json_format_preserves_raw_fields.
+        # images is part of a message; without it the json export is a
+        # lossy backup of a conversation containing photos.
         "SELECT role, content, tool_calls, tool_call_id, timestamp, images "
         "FROM messages WHERE session_id = ? ORDER BY timestamp ASC",
         (session_id,),

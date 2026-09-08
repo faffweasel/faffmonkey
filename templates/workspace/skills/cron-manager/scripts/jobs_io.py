@@ -1,14 +1,9 @@
 """Locked read-modify-write for config/jobs.json.
 
-The scheduler thread locks this file when it deletes a fired one-shot
-(`scheduler._delete_job`), but the cron-manager scripts did not, so the
-lock only ever had one participant. A skill turn that read jobs.json,
-edited it and wrote the whole list back would discard whatever the
-scheduler wrote in between, resurrecting a one-shot that had already
-fired and announcing edits the operator never made.
-
-Both sides now take the same lock, on the same `<path>.lock` file, with
-the same fcntl.flock call.
+The scheduler thread takes the same fcntl.flock on `<path>.lock` when it
+deletes a fired one-shot (`scheduler._delete_job`). A script that rewrote
+the list without it would discard whatever the scheduler wrote in
+between, resurrecting a one-shot that had already fired.
 """
 
 import fcntl

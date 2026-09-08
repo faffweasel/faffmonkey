@@ -209,9 +209,9 @@ def next_occurrence(cron: str, after: datetime) -> datetime:
 def load_reminders() -> dict:
     """The default shape, or the file's contents when they match it.
 
-    Four callers index ["reminders"] and iterate it expecting dicts. The
-    file is hand-editable, so anything else here reached them as a TypeError
-    or an AttributeError with no mention of the file.
+    Callers index ["reminders"] and expect dicts. The file is hand-editable,
+    so validate the shape here and name the file, rather than let a
+    TypeError surface downstream.
     """
     reminders_file = REMINDERS_FILE
     if not reminders_file.is_file() and LEGACY_REMINDERS_FILE.is_file():

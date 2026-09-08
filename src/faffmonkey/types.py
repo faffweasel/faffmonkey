@@ -117,9 +117,8 @@ class ToolResult:
     id: str
     content: str
     is_error: bool = False
-    # Files a skill produced, via its MEDIA: lines. Both ends of this
-    # existed for months and the middle did not, so a generated image was
-    # named in the tool result and never sent.
+    # Files a skill produced, via its MEDIA: lines, so the loop can attach
+    # them to the outbound message.
     attachments: list[Path] = field(default_factory=list)
 
 

@@ -369,9 +369,8 @@ def _check_heartbeat(config: object, workspace_dir: Path) -> str:
         _print_check("Heartbeat", YELLOW, "Disabled in config")
         return YELLOW
 
-    # The real schedule is the job, not the config. Reporting a config
-    # interval that nothing read told operators the heartbeat was running
-    # when no job existed to run it.
+    # The real schedule is the heartbeat job, not the config; report on
+    # the job so an enabled config with no job is visible.
     start, end = config.heartbeat.active_hours
     jobs = [j for j in load_jobs(workspace_dir) if j.context == "heartbeat"]
     if not jobs:
@@ -626,8 +625,6 @@ def run_doctor(base: Path) -> int:
 
     if workspace_dir.is_dir():
         _check_bootstrap_files(workspace_dir)
-        # These three can return RED. Discarding the result printed the
-        # failure and still reported "Ready to run" with exit 0.
         if _check_skills(workspace_dir) == RED:
             has_red = True
 
@@ -643,7 +640,6 @@ def run_doctor(base: Path) -> int:
         if _check_timezone(config) == RED:
             has_red = True
 
-    # next step guidance
     print()
     if not (state_dir / "config.json").exists():
         print('  Run: faff init')

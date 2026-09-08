@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AQI data from aqicn.org API — improved with station awareness.
+AQI data from the aqicn.org API, with station awareness.
 
 Features:
   - Search stations in a city/area
@@ -28,7 +28,6 @@ def _fetch(url):
     """Fetch JSON from WAQI API. Returns parsed dict or error dict."""
     if not TOKEN:
         return {"error": "AQICN_API_KEY not set"}
-    # Append token if not already in URL
     sep = "&" if "?" in url else "?"
     if "token=" not in url:
         url = f"{url}{sep}token={TOKEN}"
@@ -275,7 +274,6 @@ def get_local_multi():
     if not stations:
         return {"error": f"No stations found near {city} ({lat}, {lng})"}
 
-    # Filter to numeric AQI values
     valid = []
     for s in stations:
         try:
@@ -483,7 +481,6 @@ if __name__ == "__main__":
                     print(f"  {day['date']}: avg {day['avg']} (range {day['min']}-{day['max']}) — {aqi_description(day['avg'])}")
 
     else:
-        # Default: city lookup
         city = sys.argv[1]
         result = get_aqi(city)
         if "error" in result:

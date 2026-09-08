@@ -17,7 +17,7 @@ class NoopSearchProvider:
         """Refuse rather than return nothing.
 
         An empty list is indistinguishable from "the web has no answer",
-        so the model concluded the search had run and found nothing.
+        so the model would conclude the search ran and found nothing.
         """
         raise SearchNotConfigured(
             "web search is not configured; run: faff setup search"

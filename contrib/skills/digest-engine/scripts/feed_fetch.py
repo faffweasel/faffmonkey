@@ -57,9 +57,8 @@ USER_AGENT = "faffmonkey"
 SEEN_MAX_AGE_DAYS = 90
 
 # Freshness window for a digest that does not set its own "days". The
-# window used to live in each cron job's prompt, so a job written before
-# the skill changed kept its own copy; it belongs in digests.json beside
-# the schedule it depends on.
+# window belongs in digests.json beside the schedule it depends on, not
+# in the cron job's prompt.
 DEFAULT_DAYS = 7
 
 
@@ -92,7 +91,6 @@ def save_seen(digest_name, seen):
     os.makedirs(SEEN_DIR, exist_ok=True)
     path = _seen_path(digest_name)
 
-    # Prune entries older than SEEN_MAX_AGE_DAYS
     cutoff = (datetime.now(timezone.utc) - timedelta(days=SEEN_MAX_AGE_DAYS)).isoformat()
     pruned = {
         k: v for k, v in seen.items()
@@ -433,12 +431,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Reset mode
     if args.reset:
         reset_seen(args.reset)
         sys.exit(0)
 
-    # Stats mode
     if args.seen_stats:
         digests = load_digests()
         for d in digests:
@@ -453,7 +449,6 @@ if __name__ == "__main__":
         print(f"\nSeen data location: {SEEN_DIR}")
         sys.exit(0)
 
-    # Single URL mode (no dedup)
     if args.url:
         print(f"Fetching: {args.url}", file=sys.stderr)
         xml_bytes = fetch_feed(args.url)
@@ -497,7 +492,6 @@ if __name__ == "__main__":
                 print(f"  Filter: {d.get('filter', 'none')}")
         sys.exit(0)
 
-    # Filter to specific digest
     if args.digest:
         digests = [d for d in digests if d["name"].lower() == args.digest.lower()]
         if not digests:
@@ -516,7 +510,6 @@ if __name__ == "__main__":
         days = digest_days(digest, args.days)
         all_items = fetch_digest_feeds(digest, days=days)
 
-        # Dedup
         seen = load_seen(digest["name"])
         if args.include_seen:
             items = all_items

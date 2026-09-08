@@ -33,9 +33,8 @@ def _rejected_count(workspace_dir: Path, loaded: int) -> int:
 def run_cron_list(state_dir: Path, workspace_dir: Path) -> None:
     config = load_config(state_dir / "config.json")
     jobs = load_jobs(workspace_dir)
-    # "No cron jobs configured" was printed for an unparseable file as
-    # well as an empty one, so every job stopping looked like a healthy
-    # empty install.
+    # Distinguish an unparseable jobs.json from an empty one, or every
+    # job stopping looks like a healthy empty install.
     rejected = _rejected_count(workspace_dir, len(jobs))
     if rejected < 0:
         print("workspace/config/jobs.json is unreadable. No jobs will run.")

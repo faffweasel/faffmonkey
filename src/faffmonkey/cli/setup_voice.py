@@ -44,8 +44,8 @@ def run_setup_voice(
 
     env_path = state_dir / ".env"
     if not os.environ.get(api_key_env, ""):
-        # The provider and channel wizards read secrets with getpass; this
-        # one echoed the key to the terminal as it was typed.
+        # getpass, as in the provider and channel wizards, so the key is
+        # not echoed.
         try:
             api_key = getpass.getpass(f"API key ({api_key_env}): ").strip()
         except (EOFError, KeyboardInterrupt):

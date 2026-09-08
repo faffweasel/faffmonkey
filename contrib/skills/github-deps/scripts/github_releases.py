@@ -26,7 +26,6 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
-# Paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 
@@ -36,15 +35,14 @@ if not WORKSPACE:
 SKILL_DATA = os.environ.get(
     "SKILL_DATA", os.path.join(WORKSPACE, "skills-data", "github-deps"),
 )
-# Single-consumer config belongs in the skill's own data dir, like
-# memory-search and selfie; config/ is for cross-skill files such as
-# location.json. The old location still reads, with a nudge to move it.
+# Single-consumer config belongs in the skill's own data dir, as in
+# memory-search; config/ is for cross-skill files such as location.json.
+# The old location still reads, with a nudge to move it.
 REPOS_FILE = os.path.join(SKILL_DATA, "repos.json")
 LEGACY_REPOS_FILE = os.path.join(WORKSPACE, "config", "repos.json")
 
 USER_AGENT = "faffmonkey"
 
-# Atom namespace
 ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
 
 
@@ -146,12 +144,10 @@ def parse_atom_entries(xml_bytes):
             if name_el is not None and name_el.text:
                 author_name = name_el.text.strip()
 
-        # Content may be HTML — just store raw for now
         content = ""
         if content_el is not None and content_el.text:
             content = content_el.text.strip()
 
-        # Parse date
         parsed_date = None
         if updated:
             try:
@@ -307,7 +303,6 @@ if __name__ == "__main__":
                 print(f"    https://github.com/{r['owner']}/{r['repo']}/releases.atom")
         sys.exit(0)
 
-    # Ad-hoc single repo check
     if args.owner and args.repo:
         releases = check_repo(args.owner, args.repo, f"{args.owner}/{args.repo}", days=args.days)
         if args.json:
@@ -319,7 +314,6 @@ if __name__ == "__main__":
             print(f"No releases for {args.owner}/{args.repo} in the last {args.days} days.")
         sys.exit(0)
 
-    # Filter by label
     if args.repo:
         repos = [r for r in repos if r.get("label", "").lower() == args.repo.lower()
                  or r.get("repo", "").lower() == args.repo.lower()]
@@ -339,7 +333,6 @@ if __name__ == "__main__":
     else:
         format_results(results, quiet=args.quiet)
 
-        # Summary
         total = sum(len(v) for v in results.values())
         silent = len(repos) - len(results)
         if total > 0:

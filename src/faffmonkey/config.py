@@ -50,10 +50,9 @@ class ConfigError(Exception):
 
 
 _API_KEY_ENV_RE = re.compile(r"^[A-Z][A-Z0-9_]*_(API_KEY|TOKEN|SECRET)$")
-# The single list. config.py and provider_openai_compat.py each kept their
-# own and drifted: config allowed host.docker.internal and rejected ::1,
-# the provider did the reverse. A config that loaded cleanly could then
-# fail on every turn, or vice versa.
+# The single list of hosts allowed over plain http. config.py and
+# provider_openai_compat.py must agree, or a config that loads cleanly
+# fails on every turn.
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "host.docker.internal"})
 _TZ_RE = re.compile(r"^[A-Za-z0-9_+/\-]+$")
 
@@ -76,12 +75,9 @@ def read_json_object(path: Path, label: str) -> dict:
 def write_json_object(path: Path, data: dict) -> None:
     """Write a JSON object to disk atomically.
 
-    config.json was written with Path.write_text at four call sites, which
-    truncates before it writes. A kill in that window leaves an empty or
-    half-written file, and every later faff command fails to parse it. The
-    wizard is the worst case: it persists the API key atomically and then
-    destroys the config on the next line. _append_env_var has used this
-    pattern for .env since that was found there.
+    Path.write_text truncates before it writes, so a kill mid-write would
+    leave an empty or half-written config that every later faff command
+    fails to parse. _append_env_var uses the same pattern for .env.
     """
     import tempfile
 
@@ -157,9 +153,8 @@ class ModelConfig:
 
 @dataclass
 class HeartbeatConfig:
-    # No interval here. The cron expression on the heartbeat job is the
-    # schedule; a second source of truth that nothing read was worse than
-    # none.
+    # No interval here: the cron expression on the heartbeat job is the
+    # schedule.
     active_hours: tuple[int, int] = (9, 22)
     ack_max_chars: int = 300
     enabled: bool = True
@@ -278,8 +273,8 @@ def _parse_model(raw: dict, label: str) -> ModelConfig:
             )
 
     timeout = raw.get("timeout", 120)
-    # bool subclasses int, so "timeout": true was accepted as a 1 second
-    # timeout rather than rejected as the wrong type.
+    # bool subclasses int, so without this check "timeout": true passes
+    # as a 1 second timeout.
     if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
         raise ConfigError(f"model {label!r}: timeout must be a positive integer")
 
@@ -355,9 +350,8 @@ def _parse_compaction(raw: dict | None) -> CompactionConfig:
     if not isinstance(target_ratio, (int, float)) or not (0 < target_ratio < 1):
         raise ConfigError("compaction target_ratio must be between 0 and 1 (exclusive)")
     protect_last_n = raw.get("protect_last_n", 20)
-    # 0 loaded cleanly and then indexed one past the end of the message
-    # list on every compaction, which propagated all the way out of
-    # handle_message and left the agent unable to answer at all.
+    # 0 would index one past the end of the message list on every
+    # compaction, so require at least 1.
     if not isinstance(protect_last_n, int) or isinstance(protect_last_n, bool) or protect_last_n < 1:
         raise ConfigError("compaction protect_last_n must be a positive integer")
     hard_message_limit = raw.get("hard_message_limit", 400)
@@ -431,9 +425,8 @@ def _parse_channels(raw: dict | None) -> dict[str, ChannelConfig]:
                 f"{', '.join(sorted(_VALID_GROUP_POLICIES))}"
             )
         enabled = ch.get("enabled", False)
-        # Never type-checked, so "enabled": "false" started the channel:
-        # any non-empty string is truthy. LLM-written JSON produces exactly
-        # that, and every other field here is validated.
+        # Any non-empty string is truthy, so "enabled": "false" would start
+        # the channel; LLM-written JSON produces exactly that.
         if not isinstance(enabled, bool):
             raise ConfigError(
                 f"channel {name!r}: enabled must be true or false, got {enabled!r}"

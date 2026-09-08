@@ -35,22 +35,18 @@ def run_status(state_dir: Path, workspace_dir: Path) -> None:
 
     print("faffmonkey status\n")
 
-    # model config
     print("Model config:")
     for slot, mc in config.models.items():
         print(f"  {slot}: {mc.provider} ({mc.model})")
     print()
 
-    # active goal
     goal_path = workspace_dir / "skills-data" / "goal" / "current.json"
     if goal_path.exists():
         try:
             goal = json.loads(goal_path.read_text())
             goal_text = goal.get("goal", "(no text)")
-            # A goal file outlives the process that wrote it. Reporting it
-            # as active regardless meant a goal interrupted by a crash or
-            # a restart looked like it was still being worked on, and the
-            # operator was told nothing was wrong.
+            # A goal file outlives the process that wrote it, so check the
+            # pid before reporting the goal as active.
             pid = goal.get("pid")
             if isinstance(pid, int) and not _process_alive(pid):
                 print(f"Interrupted goal: {redact(goal_text)}")
@@ -95,7 +91,6 @@ def run_status(state_dir: Path, workspace_dir: Path) -> None:
         print("Last heartbeat wake: none")
     print()
 
-    # last 10 cron runs (across all job logs)
     runs = recent_cron_runs(state_dir, limit=10)
     if runs:
         print("Last 10 cron runs:")

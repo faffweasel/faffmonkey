@@ -38,8 +38,8 @@ def main() -> None:
         status = "enabled" if enabled else "disabled"
         prompt = job.get("prompt", job.get("skill", ""))
         deliver = job.get("deliver") or {}
-        # Without this the agent could see a job had run and not where its
-        # output went, and had to ask the user which channel they were on.
+        # Show the delivery target, so the agent can tell where a job's
+        # output goes.
         if deliver.get("mode", "announce") == "none":
             where = "deliver: none"
         elif deliver.get("channel"):

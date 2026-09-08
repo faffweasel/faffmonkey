@@ -101,7 +101,6 @@ def print_models(models: list[dict]) -> None:
         model_type = m.get("type", "")
         spec = m.get("model_spec", {})
 
-        # Determine status from model_spec fields
         if spec.get("offline", False):
             status = "offline"
         elif spec.get("beta", False):
@@ -109,20 +108,16 @@ def print_models(models: list[dict]) -> None:
         else:
             status = "available"
 
-        # Check for deprecation warning
         deprecation = spec.get("deprecation", {})
         if deprecation.get("date"):
             status = "deprecated"
 
-        # Build info string based on model type
         info_parts = []
 
-        # Description
         desc = spec.get("description", "")
         if desc:
             info_parts.append(desc[:40])
 
-        # Model-specific details
         constraints = spec.get("constraints", {})
 
         if model_type == "image":
@@ -138,7 +133,6 @@ def print_models(models: list[dict]) -> None:
             if durations:
                 info_parts.append(f"dur: {'/'.join(durations)}")
 
-        # Deprecation notice
         if deprecation.get("date"):
             info_parts.insert(0, f"[EOL {deprecation['date'][:10]}]")
 
@@ -252,7 +246,7 @@ def _config_file() -> str:
     """Always this skill's own data dir, resolved from WORKSPACE.
 
     SKILL_DATA must not be consulted: when a script here runs as another
-    skill's subprocess (selfie's IMAGE_EDIT_CMD), it inherits the CALLER's
+    skill's subprocess (a caller's IMAGE_EDIT_CMD, say), it inherits that
     SKILL_DATA and would read that skill's config instead of this one's.
     Read from the environment on every call: this module is shared, so
     baking the path in at import time would pin it to whichever script
@@ -284,7 +278,7 @@ def load_config() -> dict:
             data = json.load(f)
         return data if isinstance(data, dict) else {}
     except (json.JSONDecodeError, OSError) as e:
-        # Silence here once hid a real config behind a hardcoded
-        # fallback model; say what happened.
+        # Say what happened: a silent fallback would hide an unreadable
+        # config.
         print(f"warning: {path} unreadable ({e}); no model configured", file=sys.stderr)
         return {}

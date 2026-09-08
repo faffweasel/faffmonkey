@@ -22,9 +22,7 @@ SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 WORKSPACE = Path(os.environ.get("WORKSPACE", "")) if os.environ.get("WORKSPACE") \
     else Path(SKILL_DIR).parent.parent
 MEMORY_DIR = WORKSPACE / "memory"
-# Daily logs live in memory/daily/, not memory/. bootstrap.py:300 is the
-# canonical writer and reader; this script looked one directory too high
-# and so reported zero conversation days on every install.
+# Daily logs live in memory/daily/, where runtime/bootstrap.py writes them.
 DAILY_DIR = MEMORY_DIR / "daily"
 STATE_DIR = MEMORY_DIR / "state-of-me"
 PROPOSALS_DIR = MEMORY_DIR / "soul-proposals"

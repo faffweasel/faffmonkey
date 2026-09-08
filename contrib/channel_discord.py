@@ -79,10 +79,9 @@ class DiscordChannel:
     def _load_channel_id(self) -> int | None:
         """The channel this bot last replied in, from a previous process.
 
-        Without this, a cron job firing after a container restart and before
-        the operator has said anything found no reply channel, returned from
-        send() without raising, and the scheduler recorded the run as
-        delivered. The briefing was in the session and had gone nowhere.
+        Without this, a cron job firing after a restart and before the
+        operator has spoken has no reply channel: send() returns without
+        raising and the scheduler records the run as delivered.
         """
         if self._state_path is None or not self._state_path.is_file():
             return None
@@ -224,11 +223,9 @@ class DiscordChannel:
                 if dest is not None:
                     attachments.append(dest)
 
-            # An attachment-only message leaves text empty, which produced
-            # an LLM request message with no content field at all. Strict
-            # providers reject that, and because it is persisted it was
-            # replayed on every later turn, so one wordless photo broke the
-            # conversation permanently.
+            # An attachment-only message leaves text empty. The placeholder
+            # gives the persisted message content: strict providers reject a
+            # message without it, and it is replayed on every later turn.
             if not text.strip():
                 if images and audio is not None:
                     text = "(sent an image and a voice message)"
@@ -312,8 +309,8 @@ class DiscordChannel:
                 ).result(timeout=30)
             return room
         if self._reply_channel is None:
-            # Returning quietly here let the scheduler record a delivery
-            # that never happened as a success.
+            # Raise rather than return: a quiet return lets the scheduler
+            # record a delivery that never happened as a success.
             raise RuntimeError(
                 "discord has no reply target yet: nobody has messaged the "
                 "bot since it started and the saved channel could not be "

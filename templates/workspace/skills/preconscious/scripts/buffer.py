@@ -9,10 +9,10 @@ from pathlib import Path
 def load_buffer(buffer_file: Path) -> dict:
     """Always a dict with a list of well-formed items.
 
-    The agent has file_write over skills-data/, and the runtime's own
-    reader of this file already validates it. Trusting the shape on this
-    side turned a hand-written {} into a KeyError traceback delivered to
-    the user as the tool result.
+    The agent has file_write over skills-data/, so a hand-written {} or a
+    malformed item must be tolerated here rather than reach the caller as
+    a KeyError; the runtime's own reader of this file validates the same
+    way.
     """
     if not buffer_file.exists():
         return {"items": []}

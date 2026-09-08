@@ -305,10 +305,9 @@ def _wire_search_provider(config: Config, workspace: Path | None = None) -> Sear
 
     api_key = ""
     if config.search.api_key_env:
-        # Same posture as _voice_api_key. An empty key wired a real provider
-        # that started clean, advertised web_search to the model, and failed
-        # on the first call with a message naming neither the env var nor
-        # the file it belongs in.
+        # Same posture as _voice_api_key: an empty key would wire a real
+        # provider that advertises web_search and fails on the first call
+        # with a message naming neither the env var nor the file.
         api_key = os.environ.get(config.search.api_key_env, "")
         if not api_key:
             raise WiringError(

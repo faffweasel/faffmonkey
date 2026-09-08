@@ -9,12 +9,7 @@ from jobs_io import locked_jobs
 
 
 def main() -> None:
-    """Merge a JSON patch into an existing job, validated as a whole.
-
-    Without this the agent's only way to change a schedule was disable
-    plus add, and add refused the existing id, so the job stayed
-    disabled.
-    """
+    """Merge a JSON patch into an existing job, validated as a whole."""
     workspace_env = os.environ.get("WORKSPACE", "")
     if not workspace_env:
         print("error: WORKSPACE not set", file=sys.stderr)
