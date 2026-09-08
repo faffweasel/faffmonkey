@@ -29,6 +29,11 @@ Do not install packages globally. Do not run `pip install` outside the venv.
 - No `typing.Any`. Type hints on all public functions. Dataclasses for structured data, not dicts.
 - One file per concern. Don't split prematurely, don't combine unrelated logic.
 - No dead code, no commented-out blocks, no TODO comments that aren't tracked in an issue.
+- Comments and docstrings describe the present: why the code is the way it
+  is now. No history ("previously", "used to", "the old code did X"), no
+  dates, no review or finding ids, no references to documents that are not
+  in the repo. What changed and why belongs in the commit message. A
+  comment that restates the code ("# validate input") is deleted.
 
 ## Architecture: Read Before Writing
 
@@ -145,6 +150,10 @@ Do not create files outside these two trees without asking. Do not add subdirect
   that actually happened, a Protocol or wire format, an invariant that
   survives a rewrite, or adversarial input. A test written by reading the
   implementation can only confirm it.
+- A test docstring states the invariant, not the incident. "A timeout
+  mid-batch still answers every remaining call", not "P4-M3: the remaining
+  calls were left unanswered forever". The defect is the reason the test
+  exists; the invariant is what it checks.
 - A failing test is a question about which side is wrong. Do not edit
   whichever of the two is cheaper to change until that question is answered.
 - Mock external I/O (provider calls, filesystem, network) with `unittest.mock.patch`.
