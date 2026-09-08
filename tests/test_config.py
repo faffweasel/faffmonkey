@@ -1188,7 +1188,7 @@ class TestVoiceConfig:
 
 
 class TestGroupPolicy:
-    """D4: the setup wizard wrote it and the config layer dropped it."""
+    """The setup wizard writes group_policy; the config layer must not drop it."""
 
     def test_default_is_mention(self, tmp_path):
         path = _write_config(tmp_path, channels={"discord": {"enabled": True}})

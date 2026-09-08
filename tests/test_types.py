@@ -367,7 +367,7 @@ class TestMessageToDictLogsWarning:
 
 
 class TestImageMessages:
-    """D6a/D6e: images travel as paths and expand to content parts."""
+    """Images travel as paths and expand to content parts."""
 
     def _png(self, tmp_path, name="shot.png"):
         path = tmp_path / name

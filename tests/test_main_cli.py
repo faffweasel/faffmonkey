@@ -13,8 +13,8 @@ from faffmonkey.config import apply_compose_env, data_root
 
 
 class TestDataRoot:
-    """2026-08-24: data lived in the checkout by default and a deploy rsync
-    deleted it. The default data root now lives outside the checkout."""
+    """The default data root lives outside the checkout, so a deploy rsync
+    of the checkout cannot delete it."""
 
     def test_env_override_wins(self, tmp_path, monkeypatch):
         monkeypatch.setenv("FAFF_HOME", str(tmp_path / "custom"))
@@ -32,9 +32,9 @@ class TestDataRoot:
 
 
 class TestComposeEnv:
-    """2026-08-27: a second agent's checkout had FAFF_HOME in its compose
-    .env, which only compose read. Its telegram wizard wrote the token
-    and the daily jobs into the first agent's data root."""
+    """The CLI honours FAFF_HOME from the compose .env, not only the
+    environment, so a wizard run from one checkout writes into that
+    checkout's data root and never another agent's."""
 
     def test_reads_faff_home_from_checkout_env(self, tmp_path, monkeypatch):
         monkeypatch.delenv("FAFF_HOME", raising=False)

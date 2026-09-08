@@ -700,11 +700,9 @@ class TestTmpFilePermissions:
 
 
 class TestEnsureDefaultJobs:
-    """Fresh installs had heartbeat enabled in config and no job to run it,
-    so doctor went yellow and nothing ever fired. Then they had a heartbeat
-    and nothing else: no morning greeting, no evening memory flush, and the
-    daily log never got written, because the jobs the design assumes were
-    examples in a SKILL.md rather than anything a wizard created."""
+    """The wizard creates the jobs the design assumes: heartbeat, morning
+    greeting, evening memory flush, daily log. Without them heartbeat is
+    enabled in config with nothing to fire it, and doctor goes yellow."""
 
     def test_creates_the_daily_skeleton_the_scheduler_accepts(self, tmp_path, capsys):
         from faffmonkey.cli.setup_provider import ensure_default_jobs

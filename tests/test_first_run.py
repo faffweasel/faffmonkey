@@ -73,7 +73,7 @@ class TestFirstRunDetection:
 
 
 class TestStatusOnAFreshInit:
-    """P7-H1/D20: faff status crashed before the user had done anything."""
+    """faff status must not crash before the user has done anything."""
 
     def test_status_refuses_cleanly_with_no_provider(self, tmp_path, capsys):
         import argparse
@@ -97,7 +97,7 @@ class TestStatusOnAFreshInit:
 
 
 class TestTopLevelErrorHandler:
-    """D20: a ConfigError reached the user as a nine-frame traceback."""
+    """A ConfigError reaches the user as a message, not a traceback."""
 
     def test_config_error_becomes_a_message_and_exit_1(self, capsys):
         import pytest as _pytest

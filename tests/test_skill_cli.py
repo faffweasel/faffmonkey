@@ -206,7 +206,7 @@ class TestUpdateSkillStaleness:
 
 
 class TestSkillInstallGuardsBeforeDeleting:
-    """P7-M3: rmtree ran four lines before the guard meant to prevent it."""
+    """The symlink guard runs before rmtree, never after."""
 
     def test_symlinked_skills_dir_destroys_nothing(self, tmp_path):
         from faffmonkey.cli.skill import run_skill_install
@@ -226,7 +226,7 @@ class TestSkillInstallGuardsBeforeDeleting:
 
 
 class TestInstallIsAtomic:
-    """P6-M4/M5: a half-copied tree was reported as a local modification."""
+    """Install is atomic; a half-copied tree would later read as a local modification."""
 
     def _contrib(self, base, name="weather"):
         src = base / "contrib" / "skills" / name
@@ -279,8 +279,8 @@ class TestInstallIsAtomic:
 
 
 class TestInstallSetupChecklist:
-    """2026-08-24: "installed" meant "files copied"; the operator found
-    missing API keys and command wiring one runtime error at a time."""
+    """"installed" is more than "files copied": the checklist names the API
+    keys and command wiring the skill still needs."""
 
     def _make_skill(self, project_root, name, metadata=None, human=""):
         skill = project_root / "contrib" / "skills" / name

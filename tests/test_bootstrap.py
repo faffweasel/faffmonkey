@@ -95,8 +95,8 @@ class TestFormatTools:
         assert _format_tools({}) == ""
 
     def test_tools_carry_a_purpose_hint(self):
-        """2026-08-24: with names and permissions alone, the agent asked
-        the operator for shell access instead of using file_list."""
+        """With names and permissions alone, the agent asks the operator
+        for shell access instead of using file_list."""
         result = _format_tools({"file_list": "always", "shell_exec": "ask"})
         assert "file_list: always -- list workspace files" in result
         assert "shell_exec: ask -- run a shell command" in result
@@ -110,9 +110,8 @@ class TestFormatTime:
     def test_includes_timezone(self):
         """The zone has to reach the rendered string.
 
-        Checking only for "Current local time:" tested the f-string prefix,
-        which is there whatever the clock says, so _format_time ignoring its
-        tz argument and always formatting UTC would have passed.
+        The "Current local time:" prefix is there whatever the clock says;
+        only the zone name proves _format_time honoured its tz argument.
         """
         dubai = _format_time(ZoneInfo("Asia/Dubai"))
         utc = _format_time(ZoneInfo("UTC"))
@@ -493,8 +492,8 @@ class TestLoadCarryOver:
         assert _load_carry_over(tmp_path) == ""
 
     def test_non_list_queue_is_ignored_not_fatal(self, tmp_path):
-        # This used to raise out of load_bootstrap and stop the agent
-        # starting, over a file a skill writes.
+        # A malformed file a skill writes must not raise out of
+        # load_bootstrap and stop the agent starting.
         queue_dir = tmp_path / "skills-data" / "carry-over"
         queue_dir.mkdir(parents=True)
         (queue_dir / "queue.json").write_text(json.dumps({"message": "oops"}))

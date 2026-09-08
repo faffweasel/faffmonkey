@@ -544,7 +544,7 @@ class TestCheckTimezone:
 
 
 class TestCheckHeartbeat:
-    """D2: doctor reported a config interval that nothing read."""
+    """Doctor reports on the heartbeat job, not a config interval nothing reads."""
 
     def _workspace(self, tmp_path, jobs):
         workspace = tmp_path / "workspace"
@@ -784,7 +784,7 @@ class TestCheckCommands:
 
 
 class TestDoctorRepairsSchemaVersion:
-    """D21: an interrupted first run left the table with no row, forever."""
+    """An interrupted first run leaves the table with no row; doctor repairs it."""
 
     def test_missing_version_row_is_restored(self, tmp_path):
         import sqlite3
@@ -810,7 +810,7 @@ class TestDoctorRepairsSchemaVersion:
 
 
 class TestDoctorChecksJobs:
-    """P7-M4: doctor said "ready to run" with every job rejected."""
+    """Doctor must not say "ready to run" with every job rejected."""
 
     def _workspace(self, tmp_path, text):
         workspace = tmp_path / "workspace"
@@ -843,9 +843,8 @@ class TestDoctorChecksJobs:
 
 
 class TestCommandPathsAreWorkspaceRelative:
-    """2026-08-24: commands run with cwd=workspace, but doctor resolved
-    their script paths against the data root and reported a correctly
-    installed skill's script as not found."""
+    """Commands run with cwd=workspace, so doctor must resolve their script
+    paths there, not against the data root."""
 
     def test_workspace_relative_script_is_found(self, tmp_path, capsys):
         from faffmonkey.cli.doctor import _check_commands, GREEN

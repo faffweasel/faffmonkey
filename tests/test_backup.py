@@ -54,8 +54,8 @@ class TestBackup:
         assert row[0] == "hello"
 
     def test_covers_the_whole_data_root(self, tmp_path, capsys):
-        """2026-08-24: the state-only backup would have restored config and
-        history and none of the agent's memory."""
+        """A backup of state/ alone restores config and history and none of
+        the agent's memory."""
         state_dir = tmp_path / "state"
         state_dir.mkdir()
         (state_dir / "config.json").write_text("{}")
@@ -151,9 +151,8 @@ class TestBackup:
 
 
 class TestUnownedBackupsDir:
-    """2026-08-27: a second agent's quickstart mkdir omitted backups/, Docker
-    created that mount as root, and faff update died in os.chmod with a
-    bare traceback."""
+    """A backups/ mount that Docker created as root makes os.chmod fail;
+    that has to surface as a message, not a traceback."""
 
     def test_explains_ownership_and_the_fix(self, tmp_path):
         import pytest
@@ -172,7 +171,7 @@ class TestUnownedBackupsDir:
 
 
 class TestSnapshotCollision:
-    """P7-M2: two snapshots in the same second truncated each other."""
+    """Two snapshots taken in the same second must not truncate each other."""
 
     def test_two_snapshots_in_quick_succession_both_survive(self, tmp_path):
         state_dir = tmp_path / "state"
@@ -190,10 +189,10 @@ class TestSnapshotCollision:
 class TestRestore:
     """A restore has to return the data root to the backed-up point in time.
 
-    extractall over the existing tree made it a merge: anything absent from
-    the tarball survived, so a pre-cron backup left cron-state.json in place
-    and the scheduler honoured backoff for jobs the restored config does not
-    contain. There were no tests for run_restore at all.
+    extractall over the existing tree would make it a merge: anything absent
+    from the tarball survives, so a pre-cron backup leaves cron-state.json
+    in place and the scheduler honours backoff for jobs the restored config
+    does not contain.
     """
 
     def _snapshot(self, tmp_path) -> str:
@@ -220,8 +219,8 @@ class TestRestore:
         assert not (state_dir / "logs").exists()
 
     def test_workspace_round_trips(self, tmp_path, capsys):
-        """2026-08-24: memory files were the irreplaceable loss; the backup
-        did not contain them at all."""
+        """Memory files are the irreplaceable loss, so the backup must
+        contain them."""
         state_dir = tmp_path / "state"
         state_dir.mkdir()
         (state_dir / "config.json").write_text("{}")

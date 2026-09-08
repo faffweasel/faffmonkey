@@ -122,7 +122,7 @@ class TestCronHistory:
 
 
 class TestCronRunKeepsOneShots:
-    """D24: testing a reminder used to destroy it."""
+    """A manual run of a one-shot reminder must not consume it."""
 
     def test_manual_run_does_not_delete_a_one_shot(self, tmp_path, capsys):
         from unittest.mock import MagicMock, patch
@@ -163,7 +163,7 @@ class TestCronRunKeepsOneShots:
 
 
 class TestCronListReportsRejects:
-    """P7-M4: a broken jobs.json printed the same line as an empty one."""
+    """A broken jobs.json must not print the same line as an empty one."""
 
     def _setup(self, tmp_path, jobs_text):
         state_dir = tmp_path / "state"

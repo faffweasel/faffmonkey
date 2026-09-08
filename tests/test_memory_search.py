@@ -609,9 +609,8 @@ class TestDetectMode:
 
 
 class TestAutoIndexOnSearch:
-    """2026-08-24: search dead-ended with "Index does not exist" and nothing
-    in the install ever built the index; search now builds or refreshes it
-    before every query."""
+    """Nothing else in the install builds the index, so search builds or
+    refreshes it before every query."""
 
     def _env(self, tmp_path, monkeypatch):
         workspace = tmp_path / "ws"
@@ -657,11 +656,9 @@ class TestAutoIndexOnSearch:
 
 
 class TestEmbeddingPrivacy:
-    """2026-08-24: the default config shipped provider "auto" with a
-    prefilled OpenRouter entry, so installing an unrelated skill that set
-    OPENROUTER_API_KEY silently sent memory chunks to a remote embedding
-    endpoint. Embeddings are now off by default and never widen beyond the
-    named provider."""
+    """Embeddings are off by default and never widen beyond the named
+    provider, so an unrelated skill setting OPENROUTER_API_KEY cannot send
+    memory chunks to a remote endpoint."""
 
     _PROVIDERS = {
         "remote": {

@@ -1,10 +1,9 @@
 """What a setup wizard is for: producing a config the runtime can start on.
 
-Every wizard was tested by asserting the sequence of input() calls and the
-keys it wrote. None of them checked the only property that matters, which
-is that the result loads through the real parser and wires up. A wizard
-that writes a config faff refuses to start on has failed, however many
-prompts it got right.
+Asserting the sequence of input() calls and the keys written does not
+prove the only property that matters: the result loads through the real
+parser and wires up. A wizard that writes a config faff refuses to start
+on has failed, however many prompts it got right.
 """
 
 from __future__ import annotations
@@ -104,7 +103,7 @@ class TestVoiceWizard:
 
 @pytest.mark.parametrize("channel", ["telegram", "discord"])
 class TestChannelWizards:
-    """Both channels, one contract. They were tested separately and drifted."""
+    """Both channels, one contract, checked in one place so they cannot drift."""
 
     def _run(self, channel, install, user_id="12345"):
         module = f"faffmonkey.cli.setup_{channel}"
@@ -139,7 +138,7 @@ class TestChannelWizards:
         assert channel in BUILTIN_CHANNELS
 
     def test_it_refuses_to_write_over_a_broken_config(self, channel, install):
-        """The channel wizards used to skip the schema check the others ran."""
+        """Every wizard runs the schema check before writing; the channel wizards are not exempt."""
         install.write_config({"models": {"main": {"provider": "p"}}, "tool_permisions": {}})
 
         with pytest.raises(SystemExit):

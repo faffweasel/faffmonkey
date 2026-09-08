@@ -348,9 +348,8 @@ class TestSyncBuiltinSkills:
     def test_contrib_skill_verified_against_checkout_not_data_root(
         self, tmp_path, capsys, monkeypatch
     ):
-        # After the data-root split, contrib/ lives in the checkout and the
-        # data root has none. Reinstalling could never clear "unverifiable"
-        # because the check looked for contrib/ under the data root.
+        # contrib/ lives in the checkout, not the data root; the check must
+        # look there or reinstalling can never clear "unverifiable".
         from faffmonkey.cli.skill import _dir_hash
 
         checkout = tmp_path / "checkout"
@@ -742,7 +741,7 @@ class TestUpdateExtension:
 
 
 class TestUpdateSurvivesDamage:
-    """P7-M1/L1/D23: three ways update aborted after taking the snapshot."""
+    """Three ways update can fail after taking the snapshot; each leaves the install usable."""
 
     def test_database_without_schema_table_does_not_traceback(self, tmp_path, capsys):
         from faffmonkey.cli.update import _run_migrations
@@ -780,10 +779,9 @@ class TestUpdateSurvivesDamage:
 
 
 class TestDataRootMigration:
-    """2026-08-24: a deploy rsync deleted workspace/, state/ and the backups
-    inside state/ because they all lived in the checkout. faff update moves
-    a legacy in-checkout install to the data root, one time, with
-    confirmation."""
+    """A legacy install keeps workspace/, state/ and backups inside the
+    checkout, where a deploy rsync deletes them; faff update moves it to
+    the data root once, with confirmation."""
 
     def _legacy_install(self, tmp_path):
         legacy = tmp_path / "checkout"

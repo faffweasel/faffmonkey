@@ -535,8 +535,7 @@ class TestHeartbeatTick:
 class TestHeartbeatFileTrust:
     """HEARTBEAT.md is always-trusted, so the symlink rejection the bootstrap
     applies to SOUL.md and friends must hold on the path that actually reads
-    it every hour. It was only ever tested against a bootstrap mode nothing
-    called."""
+    it every hour."""
 
     def test_symlinked_heartbeat_is_ignored(self, tmp_path, caplog):
         config = _make_config()
@@ -568,7 +567,7 @@ class TestHeartbeatFileTrust:
 
 
 class TestHeartbeatConfigIsHonoured:
-    """D2: enabled and active_hours were parsed, validated and never read."""
+    """heartbeat.enabled and active_hours are enforced, not only parsed."""
 
     def _job(self):
         return CronJob(

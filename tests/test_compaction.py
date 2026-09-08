@@ -380,7 +380,7 @@ class TestMemoryFlush:
         result = memory_flush(store, session.id, workspace, lambda mc: failing, config)
         # FLUSH_FAILED is what makes compact() preserve the head rather than
         # discard it. A partial file written before the provider failed would
-        # also be a defect, and neither was checked.
+        # also be a defect.
         assert result == FLUSH_FAILED
         assert list(workspace.iterdir()) == []
 
@@ -1267,7 +1267,6 @@ class TestExecuteFlushWritesContentCap:
 
 class TestConcurrentWriteDuringSummarisation:
     def test_concurrent_write_not_blocked(self, tmp_path):
-        """Verify that appending a message while _summarise runs is not blocked."""
         import threading
 
         state_dir = tmp_path / "state"
@@ -1641,11 +1640,9 @@ class TestFlushRefusesOverwrite:
     def test_memory_file_is_appended_never_replaced(self, tmp_path):
         """MEMORY.md must be updatable, and must not be destroyable.
 
-        This previously asserted the write was refused outright, which meant
-        MEMORY.md could be written once and never updated: the flush's whole
-        purpose failed from the second run onward. Appending keeps the
-        feature working while preserving the property the old assertion
-        cared about, that injected content cannot erase what is there.
+        Refusing the write outright would let MEMORY.md be written once and
+        never updated. Appending keeps the flush working while injected
+        content still cannot erase what is there.
         """
         workspace = tmp_path / "workspace"
         workspace.mkdir()
@@ -1986,9 +1983,8 @@ class TestPartialFlushPreservesBlob:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
         # An existing file the flush does not own, so the write is refused
-        # and the flush is genuinely partial. This used to use MEMORY.md,
-        # which is now appended to rather than refused, so the flush
-        # succeeded and there was nothing partial left to preserve.
+        # and the flush is genuinely partial. MEMORY.md would not do here:
+        # it is appended to, not refused, so the flush would succeed.
         (workspace / "notes.md").write_text("existing notes")
 
         store = SessionStore(state_dir / "sessions.db")
@@ -2020,7 +2016,7 @@ class TestPartialFlushPreservesBlob:
 
 
 class TestOrphanStubOrdering:
-    """P4-M2: the repair produced exactly the invalid sequence it prevents."""
+    """The repair must not produce the invalid sequence it exists to prevent."""
 
     def test_stub_stays_next_to_the_call_it_answers(self, tmp_path):
         store = _make_store(tmp_path)
@@ -2062,7 +2058,7 @@ class TestOrphanStubOrdering:
 
 
 class TestCheapTierResolvesTheSlot:
-    """P4-M4: resolve_model("cheap") looked up a routing task that never exists."""
+    """"cheap" is a model slot, not a routing task, so it is read from config.models."""
 
     def test_tier_two_runs_on_the_cheap_slot(self):
         calls: list[str] = []
@@ -2102,11 +2098,9 @@ class TestCheapTierResolvesTheSlot:
 
 
 class TestDailyNote:
-    """2026-08-25: a full day of conversation produced no daily-log entry.
-    AGENTS.md asked the agent to append as it went and it never did; the
-    evening job that should have caught it failed on a provider error; and
-    when asked directly it wrote into yesterday's file. The loop now owns
-    the recording."""
+    """The loop owns daily-log recording. An agent asked by AGENTS.md to
+    append as it goes does not; an evening job can fail on a provider
+    error; a direct request can land in yesterday's file."""
 
     def _session(self, tmp_path):
         from faffmonkey.config import DailyNoteConfig
@@ -2253,9 +2247,9 @@ _TEMPLATE_SKILLS = Path(__file__).parent.parent / "templates" / "workspace" / "s
 
 
 class TestMemoryIndexRefresh:
-    """2026-08-28: index.sqlite was four days stale while daily logs were
-    written every day. The index refreshed only when the agent searched,
-    and it never did. The runtime now refreshes it after its own writes."""
+    """The runtime refreshes index.sqlite after its own writes. Refreshing
+    only on search leaves it stale for as long as the agent never
+    searches, however many daily logs are written."""
 
     def _workspace(self, tmp_path, skill=True):
         workspace = tmp_path / "workspace"

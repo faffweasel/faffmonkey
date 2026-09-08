@@ -21,9 +21,9 @@ class _Tty:
 
 
 class TestTypeahead:
-    """2026-08-27: text typed while the agent was busy was echoed raw by
-    the tty and then submitted by the next prompt, so a stray "y" could
-    answer an approval prompt the user never saw."""
+    """Text typed while the agent is busy is echoed raw by the tty and
+    then submitted by the next prompt, so a stray "y" could answer an
+    approval prompt the user never saw."""
 
     def test_flushes_tty_before_chat_prompt(self):
         order = []
@@ -121,9 +121,8 @@ class TestCLIChannel:
     def test_start_stop_leave_the_channel_open(self):
         """Only EOF in receive() closes a CLIChannel.
 
-        The old test called both and asserted nothing, so making stop() set
-        _closed would have passed while every later receive() returned None
-        forever. No test anywhere called CLIChannel.is_closed().
+        If stop() set _closed, every later receive() would return None
+        forever.
         """
         ch = CLIChannel()
         ch.start()

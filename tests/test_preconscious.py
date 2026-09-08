@@ -270,7 +270,7 @@ class TestBufferCap:
 
 
 class TestBufferShapeIsUntrusted:
-    """P6-M1/L3/L4: the agent can write this file, and the shape was trusted."""
+    """The agent can write this file, so its shape is untrusted input."""
 
     def _add(self, tmp_path, *args):
         from importlib import util

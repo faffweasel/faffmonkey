@@ -439,7 +439,7 @@ class TestSchemeAllowlist:
 
 
 class TestMalformedToolCalls:
-    """C3: `call.arguments | {...}` raised TypeError on anything but a dict."""
+    """Tool-call arguments that are not a dict are rejected, not merged with `|`."""
 
     def _parse(self, tool_calls):
         provider = OpenAICompatProvider("http://localhost:11434/v1")
@@ -473,10 +473,9 @@ class TestMalformedToolCalls:
 
 
 class TestReasoningFieldFallback:
-    """2026-08-24: Kimi K2.6 via Ollama Cloud answered entirely in the
-    reasoning field with empty content; the parser read only content, so
-    the morning cron job logged "empty response after retries" and
-    delivered nothing."""
+    """Some models (Kimi K2.6 via Ollama Cloud) answer entirely in the
+    reasoning field with empty content; the parser falls back to it, or a
+    cron job delivers nothing."""
 
     def _parse(self, message, finish_reason=None):
         provider = OpenAICompatProvider("http://localhost:11434/v1")
@@ -512,9 +511,8 @@ class TestReasoningFieldFallback:
 
 
 class TestErrorBodySurfaced:
-    """A rejected request must say why. The 400 handler read the body
-    and re-raised the bare HTTPError, so the operator's log said
-    "HTTP Error 400: Bad Request" and nothing else (2026-08-25)."""
+    """A rejected request must say why: the error body reaches the log,
+    not just "HTTP Error 400: Bad Request"."""
 
     def _http_error(self, code: int, body: bytes) -> urllib.error.HTTPError:
         return urllib.error.HTTPError(

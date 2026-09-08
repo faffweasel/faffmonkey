@@ -52,11 +52,11 @@ class TestATurnWorksAtAll:
 
 
 class TestCronDeliveryEntersTheConversation:
-    """C8: the agent had no record of the message it had just sent.
+    """The agent has a record of the message it just sent.
 
-    Replying to a morning briefing landed in a history containing no
-    briefing. Code and docs agreed with each other and both were wrong, so
-    only a round trip catches it.
+    A reply to a morning briefing lands in a history containing the
+    briefing. Code and docs can agree and both be wrong, so only a round
+    trip catches it.
     """
 
     def test_a_delivered_briefing_is_in_the_history_the_user_replies_into(

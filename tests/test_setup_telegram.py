@@ -156,7 +156,7 @@ class TestSetupTelegramDispatcher:
 
 
 class TestProvenanceSourceIsRelative:
-    """P7-H4: an absolute source made doctor report a fault that did not exist."""
+    """Provenance source is recorded relative; an absolute path makes doctor report a fault that does not exist."""
 
     def test_source_is_project_relative(self, tmp_path):
         from faffmonkey.cli.setup_provider import install_extension

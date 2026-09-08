@@ -42,8 +42,8 @@ class TestSetupVoice:
             "y", "y", "OPENAI_API_KEY",
             "https://api.openai.com/v1", "whisper-1", "tts-1", "alloy",
         ]
-        # The key is read with getpass, never the echoing prompt: the
-        # provider and channel wizards hid it and this one showed it.
+        # The key is read with getpass, never the echoing prompt, as the
+        # provider and channel wizards do.
         with patch("faffmonkey.cli.setup_voice.getpass.getpass", return_value="sk-test-123"):
             run_setup_voice(state_dir, base_dir=base_dir)
 

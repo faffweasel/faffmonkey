@@ -65,9 +65,7 @@ class TestSend:
     def test_send_failure_logged_not_raised(self, caplog):
         """The log line is the only evidence a send failed.
 
-        The name claimed both halves and the test checked only that send()
-        did not raise, so discarding the exception silently passed. A
-        delivery that fails without a log is invisible to the operator.
+        A delivery that fails without a log is invisible to the operator.
         """
         ch = self._sending_channel()
         mock_future = MagicMock()

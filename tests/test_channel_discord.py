@@ -167,11 +167,7 @@ class TestReceive:
 
 class TestSend:
     def test_noop_without_setup(self):
-        """send() before the client connects dispatches nothing and changes nothing.
-
-        The test asserted only that the call did not raise, so anything the
-        guard path did on its way out was invisible.
-        """
+        """send() before the client connects dispatches nothing and changes nothing."""
         ch = _make_channel(allowed_users=["123"])
         with patch(
             "contrib.channel_discord.asyncio.run_coroutine_threadsafe",
@@ -424,10 +420,10 @@ class TestReplyChannelRestoredThroughTheApi:
 
 
 class TestNonMediaAttachmentsAreKept:
-    """A PDF used to fall out of the attachment loop unsaved and unmentioned.
+    """A non-media attachment is saved and named, not dropped.
 
-    The operator was then told "(sent an empty message)" and the file was
-    gone.
+    A PDF that falls out of the attachment loop leaves the operator told
+    "(sent an empty message)" with the file gone.
     """
 
     def test_attachment_saved_to_inbox(self, tmp_path):

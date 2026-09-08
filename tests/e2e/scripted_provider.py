@@ -86,7 +86,7 @@ def tool_call(name: str, arguments: dict[str, Any], call_id: str = "call_1") -> 
 class _Handler(BaseHTTPRequestHandler):
     script: Script
 
-    def do_POST(self) -> None:  # noqa: N802 (http.server API)
+    def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length) if length else b"{}"
         try:
@@ -109,7 +109,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         """The preflight probe hits /models."""
         encoded = json.dumps({"data": [{"id": "e2e-model"}]}).encode()
         self.send_response(200)

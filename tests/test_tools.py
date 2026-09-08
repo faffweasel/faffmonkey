@@ -206,10 +206,8 @@ class TestPreApproval:
     def test_preapproved_pattern_matches(self, ws):
         """A pre-approved command runs unprompted and its output comes back.
 
-        The old assertion was `not result.is_error or "denied" not in
-        result.content`, a disjunction true for every error that is not a
-        denial. Any failure in the pre-approval path that did not say
-        "denied" passed, and nothing checked the command had run at all.
+        Asserting only "not denied" passes on any other error, so the
+        output itself is checked.
         """
         (ws / "marker.txt").write_text("x")
         prompted = []
@@ -426,8 +424,8 @@ class TestToolDispatchLoop:
         """Every call in an over-budget batch needs an answer.
 
         The cap has two halves: one ends the turn, the other gives each
-        skipped call an error result. Only the first was covered, and an
-        assistant message carrying tool_calls that nothing answered is
+        skipped call an error result. An assistant message carrying
+        tool_calls that nothing answered is
         rejected by strict providers on every later turn, so the session is
         poisoned rather than the turn being cut short.
         """
@@ -1117,10 +1115,9 @@ class TestIsProtected:
             assert _is_protected(name) is False, name
 
     def test_skills_are_the_agents_own(self):
-        """SPEC v1.3 item 12 locked skills/ alongside the identity files and
-        the same document said the agent writes to skills/. The lock broke
-        skill-writer (init_skill scaffolds SKILL.md, the agent could not
-        then fill it in) and every "customise this skill" instruction."""
+        """skills/ is the agent's own, not protected like the identity files:
+        skill-writer scaffolds SKILL.md for the agent to fill in, and every
+        "customise this skill" instruction depends on it."""
         assert _is_protected("skills/my-skill/SKILL.md") is False
         assert _is_protected("skills/morning-routine/scripts/prepare.py") is False
 
@@ -2474,9 +2471,9 @@ class TestFileList:
 
 
 class TestUnattendedDenial:
-    """2026-08-27: under a channel every shell_exec came back "denied by
-    user", so the model tried variants until the round-trip cap ended the
-    turn. Nobody had denied anything; there was nobody to ask."""
+    """Under a channel there is nobody to ask, so an unattended shell_exec
+    must not read "denied by user"; the model otherwise tries variants
+    until the round-trip cap ends the turn."""
 
     def test_no_prompt_says_the_tool_is_unavailable(self, ws):
         registry = _registry(ws, {"shell_exec": "ask"}, prompt_fn=None)
@@ -2959,7 +2956,7 @@ class TestFileWriteSessionCreatedCanonical:
 
 
 class TestDispatchRejectsMalformedArguments:
-    """D29: `call.arguments | {...}` raises TypeError on a non-dict."""
+    """Dispatch rejects non-dict arguments rather than letting `|` raise TypeError."""
 
     def test_non_dict_arguments_return_an_error_result(self, tmp_path):
         registry = ToolRegistry(
@@ -2977,8 +2974,8 @@ class TestDispatchRejectsMalformedArguments:
 
 
 class TestShellExecSeesCommands:
-    """D28: commands.json values are not in os.environ, so shell could not
-    see IMAGE_GEN_CMD at all."""
+    """commands.json values are not in os.environ, so shell_exec is handed
+    them explicitly."""
 
     def test_command_seam_values_reach_the_shell(self, tmp_path):
         workspace = tmp_path / "workspace"
@@ -3004,7 +3001,7 @@ class TestShellExecSeesCommands:
 
 
 class TestApprovalTTLPolicy:
-    """P1-m5: the expiry tests follow the constant, so nothing pinned it."""
+    """The expiry tests derive from the constant, so this pins its value."""
 
     def test_shell_approvals_expire_after_five_minutes(self):
         # A deliberate security policy, not an implementation detail:
@@ -3013,10 +3010,9 @@ class TestApprovalTTLPolicy:
 
 
 class TestDispatchTimeout:
-    """2026-08-24: a flat 120s dispatch ceiling sat below the skill layer's
-    declared timeouts; the loop abandoned the thread while the skill's
-    subprocess ran a 150s image edit to completion, so the file saved, the
-    result was lost, and the attempt was retried at full price."""
+    """The dispatch ceiling must not sit below the skill layer's declared
+    timeouts, or the loop abandons the thread while the subprocess runs to
+    completion: the result is lost and the attempt retried at full price."""
 
     def _registry(self, tmp_path):
         return ToolRegistry(

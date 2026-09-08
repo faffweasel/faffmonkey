@@ -831,7 +831,7 @@ class TestInvokeCommandsEnv:
 
 
 class TestRequiresGating:
-    """D1: 20 of 22 shipped skills declared `requires` and nothing read it."""
+    """Skills declare `requires`; the catalog reads it and hides what cannot run."""
 
     def _skill(self, tmp_path, name, metadata):
         d = tmp_path / "skills" / name
@@ -876,11 +876,9 @@ class TestRequiresGating:
         assert scan_skills(tmp_path) == []
 
     def test_command_seam_key_satisfies_requirement(self, tmp_path, monkeypatch):
-        """2026-08-25: selfie required IMAGE_EDIT_CMD, which only
-        commands.json supplied. The catalog check read os.environ alone,
-        hid the skill, and the agent generated a portrait instead of
-        editing the reference one. invoke() merges commands.json into
-        the subprocess env, so the catalog must count it as present."""
+        """invoke() merges commands.json into the subprocess env, so the
+        catalog counts a command-seam key (IMAGE_EDIT_CMD) as present even
+        when os.environ lacks it."""
         workspace = tmp_path / "workspace"
         self._skill(workspace, "selfie", '{"faffmonkey":{"requires":{"env":["IMAGE_EDIT_CMD"]}}}')
         monkeypatch.delenv("IMAGE_EDIT_CMD", raising=False)
@@ -894,7 +892,7 @@ class TestRequiresGating:
 
 
 class TestDeclaredActionsAreAnAllowList:
-    """P6-L1: every shared module in scripts/ was reachable as an action."""
+    """Declared actions are an allow-list; shared modules in scripts/ are not reachable as actions."""
 
     def _skill(self, tmp_path):
         d = tmp_path / "skills" / "preconscious"

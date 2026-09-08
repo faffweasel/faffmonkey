@@ -453,10 +453,10 @@ class TestWireSearchProvider:
     def test_missing_env_var_is_a_hard_error(self, tmp_path, monkeypatch):
         """Search configured without its key fails at startup, not per query.
 
-        An empty key wired a real provider, so the agent started clean and
-        advertised web_search to the model. The first search returned a tool
-        error naming neither the env var nor the file it belongs in. Voice
-        has behaved this way since the same defect was fixed there.
+        An empty key would wire a real provider, so the agent starts clean
+        and advertises web_search to the model, and the first search
+        returns a tool error naming neither the env var nor the file it
+        belongs in.
         """
         monkeypatch.delenv("SEARCH_TEST_API_KEY", raising=False)
         self._write_config(tmp_path, {
@@ -696,11 +696,9 @@ class TestWireVoice:
     def test_missing_env_var_is_a_hard_error(self, tmp_path, monkeypatch):
         """Voice configured without its key fails at startup, not per message.
 
-        This previously asserted that a real transcriber was wired holding
-        an empty key. It then failed on every audio message, and the user
-        was told only that the message could not be transcribed. A missing
-        model API key has always been a hard config error; this is the same
-        mistake and now behaves the same way.
+        A transcriber holding an empty key fails every audio message with
+        only "could not be transcribed"; a missing key is a hard config
+        error, as it is for the model API key.
         """
         monkeypatch.delenv("VOICE_TEST_API_KEY", raising=False)
         self._write_config(tmp_path, {

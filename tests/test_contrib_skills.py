@@ -325,9 +325,9 @@ class TestDigestEngine:
         ff = self._import(monkeypatch, tmp_path)
         assert [d["name"] for d in ff.load_digests()] == ["T"]
 
-    # 2026-08-31: the freshness window lived in each cron job's prompt
-    # ("--days 2"). Pointing the jobs at SKILL.md instead lost it, and the
-    # skill's fixed 7 took over. The window is now a field of the digest.
+    # The freshness window is a field of the digest, not of a cron job's
+    # prompt, so pointing jobs at SKILL.md cannot lose it to the skill's
+    # fixed default.
     def test_days_field_precedence(self, monkeypatch, tmp_path, capsys):
         ff = self._import(monkeypatch, tmp_path)
         assert ff.digest_days({"name": "d"}) == ff.DEFAULT_DAYS
@@ -349,10 +349,10 @@ class TestDigestEngine:
 
 
 class TestSkillDataConfigLocations:
-    """2026-08-24: single-consumer skill configs lived in config/, which the
-    agent treated as off-limits (the jobs.json rule bled over) and which
-    mixed skill state into cross-skill configuration. They now live in
-    skills-data/<name>/ with the legacy location still honoured."""
+    """Single-consumer skill configs live in skills-data/<name>/, not
+    config/: the agent treats config/ as off-limits (the jobs.json rule
+    bleeds over) and it is for cross-skill configuration. The legacy
+    location is still honoured."""
 
     def test_github_deps_reads_skills_data_first(self, tmp_path):
         sd = tmp_path / "skills-data" / "github-deps"
@@ -493,10 +493,10 @@ class TestOpenRouterImage:
 
     def test_config_overrides_default_model(self, monkeypatch, tmp_path):
         # Real config in the skill's own data dir; a decoy where the
-        # inherited SKILL_DATA env points. 2026-08-24: config resolved via
-        # SKILL_DATA, so a script running as another skill's subprocess
-        # read the CALLER's data dir, missed the operator's config, and
-        # silently used the hardcoded fallback model.
+        # inherited SKILL_DATA env points. A script run as another skill's
+        # subprocess inherits the caller's SKILL_DATA; config must not
+        # resolve through it, or the operator's config goes unread and the
+        # hardcoded fallback model is billed.
         own = tmp_path / "skills-data" / "openrouter-image-simple"
         own.mkdir(parents=True)
         (own / "config.json").write_text(json.dumps({
@@ -543,8 +543,8 @@ class TestVeniceMedia:
         return mod
 
     def test_sizing_params_sent_only_when_requested(self, monkeypatch, tmp_path):
-        """2026-08-24: unconditional width/height defaults broke every
-        aspect-ratio model, including the skill's own default model."""
+        """Unconditional width/height defaults break every aspect-ratio
+        model, including the skill's own default."""
         mod = self._load_venice_image(monkeypatch, tmp_path)
         captured = {}
         monkeypatch.setattr(
@@ -580,16 +580,15 @@ class TestVeniceMedia:
         assert captured["width"] == 1024 and captured["height"] == 768
 
     def test_edit_defaults_to_shared_media(self):
-        """2026-08-24: venice-edit defaulted to the input's own directory,
-        dropping edited selfies next to the reference portrait in
-        identity/ while HUMAN.md documented shared/media all along."""
+        """Edits go to shared/media as HUMAN.md documents, not beside the
+        input image."""
         result = _run("venice-ai-media", "venice-edit.py", ["--help"], {})
         assert result.returncode == 0
         assert "shared/media" in result.stdout
 
     def test_failed_batch_run_leaves_no_empty_folder(self, monkeypatch, tmp_path):
-        """2026-08-24: every failed generation left an empty timestamped
-        folder under shared/media."""
+        """A failed generation must not leave an empty timestamped folder
+        under shared/media."""
         import importlib
         monkeypatch.setenv("WORKSPACE", str(tmp_path))
         sys.path.insert(0, str(_CONTRIB_SKILLS / "venice-ai-media" / "scripts"))
@@ -633,9 +632,9 @@ class TestVeniceMedia:
         assert json.loads(copied.read_text()) == cfg
 
     def test_seed_is_never_read_once_the_copy_exists(self, monkeypatch, tmp_path):
-        """2026-08-27: an agent set its edit model in the installed skill's
-        own config, which marked the skill modified and was lost on
-        reinstall. Only the skills-data copy counts."""
+        """Config set in the installed skill's own directory marks the skill
+        modified and is lost on reinstall; only the skills-data copy
+        counts."""
         import importlib
         import shutil
         skill = tmp_path / "skills" / "venice-ai-media"
@@ -656,10 +655,9 @@ class TestVeniceMedia:
             importlib.reload(venice_common)
 
     def test_config_ignores_foreign_skill_data_env(self, monkeypatch, tmp_path):
-        """2026-08-24: venice-edit as selfie's IMAGE_EDIT_CMD subprocess
-        inherited selfie's SKILL_DATA, looked for config in
-        skills-data/selfie/, and billed the hardcoded fallback model while
-        the operator's real config sat unread."""
+        """venice-edit run as another skill's IMAGE_EDIT_CMD subprocess
+        inherits that skill's SKILL_DATA; its config must still come from
+        its own skills-data directory."""
         import importlib
         monkeypatch.setenv("WORKSPACE", str(tmp_path))
         caller = tmp_path / "skills-data" / "selfie"
@@ -683,8 +681,8 @@ class TestVeniceMedia:
         assert cfg["edit"]["model"] == "firered-image-edit-1.1"
 
     def test_prompt_log_appends_beside_the_image(self, monkeypatch, tmp_path):
-        """2026-08-24: per-run folders with an index.html each made images
-        unbrowsable; the flat folder keeps prompts in one appendable file."""
+        """Per-run folders with an index.html each make images unbrowsable;
+        the flat folder keeps prompts in one appendable file."""
         import importlib
         monkeypatch.setenv("WORKSPACE", str(tmp_path))
         sys.path.insert(0, str(_CONTRIB_SKILLS / "venice-ai-media" / "scripts"))
@@ -1188,9 +1186,8 @@ class TestWordDaily:
         assert state["words"][picked["id"]]["last_score"] == 2
 
     def test_hard_word_returns_next_day(self, tmp_path):
-        """2026-09-05: a score of 1 promised 'back tomorrow', but the picker
-        excluded yesterday's word before checking whether it was due, so a
-        hard word could never come back the next day."""
+        """A score of 1 promises 'back tomorrow', so the picker must check
+        whether yesterday's word is due before excluding it."""
         picked = json.loads(self._run_pick(tmp_path).stdout)
         self._run_pick(tmp_path, ["--feedback", picked["id"], "1"])
         state_path = tmp_path / "sd" / "word-state.json"
@@ -1203,9 +1200,9 @@ class TestWordDaily:
         assert again["reason"] == "review_hard"
 
     def test_feedback_last_targets_last_sent_not_last_scored(self, tmp_path):
-        """2026-09-05: the score reply arrives in a different session from the
-        cron that sent the word, and --history only lists scored words, so
-        the agent had no reliable way to find the id it was scoring."""
+        """The score reply arrives in a different session from the cron that
+        sent the word, and --history lists only scored words, so 'last' has
+        to mean the last sent."""
         first = json.loads(self._run_pick(tmp_path).stdout)
         self._run_pick(tmp_path, ["--feedback", first["id"], "3"])
         second = json.loads(self._run_pick(tmp_path).stdout)
@@ -1252,8 +1249,8 @@ class TestWeeklyStateOfMe:
         from datetime import datetime, timedelta, timezone as dt_tz
         memory = tmp_path / "memory"
         (memory / "dreams").mkdir(parents=True)
-        # memory/daily/, the path bootstrap.py actually writes. The fixture
-        # previously wrote to memory/ and so agreed with the bug.
+        # memory/daily/ is the path bootstrap.py writes; a fixture that
+        # writes memory/ cannot catch the reader looking in the wrong place.
         (memory / "daily").mkdir(parents=True)
         today = datetime.now(dt_tz.utc)
         for i in range(3):
@@ -1286,9 +1283,8 @@ class TestWeeklyStateOfMe:
         from datetime import datetime, timedelta, timezone as dt_tz
         proposals = tmp_path / "memory" / "soul-proposals"
         proposals.mkdir(parents=True)
-        # Relative to today, not hardcoded. The previous fixture used
-        # 2026-08-01 and 2026-07-20 and would have started failing on
-        # 2026-08-20, when the older file fell outside the 30 day window.
+        # Relative to today: a hardcoded date eventually falls outside the
+        # 30 day window.
         now = datetime.now(dt_tz.utc)
         for days in (2, 25):
             stamp = (now - timedelta(days=days)).strftime("%Y-%m-%d")

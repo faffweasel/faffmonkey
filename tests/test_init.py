@@ -403,7 +403,7 @@ class TestInitCommandsFile:
 
 
 class TestInitSurvivesDamage:
-    """H2/D30: init is the documented repair, and it crashed on the input."""
+    """init is the documented repair, so it must not crash on the damage it repairs."""
 
     @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory modes")
     def test_unwritable_data_root_explains_itself(self, project_dir):

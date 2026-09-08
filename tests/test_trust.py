@@ -581,9 +581,8 @@ class TestCaseSensitiveAlwaysTrusted:
         workspace.mkdir()
         (workspace / "soul.md").write_text("fake soul via case trick")
 
-        # The old guard was `if result is not None:`, which skipped the only
-        # assertion on Linux, the platform this deploys to. Both outcomes are
-        # now pinned, so a regression returning trusted=True fails somewhere.
+        # Both filesystem outcomes are pinned, so a regression returning
+        # trusted=True fails on Linux (the deploy platform) as well as macOS.
         case_insensitive = (workspace / "SOUL.md").exists()
         result = read_and_check_trust("SOUL.md", workspace, {})
         if case_insensitive:
@@ -677,7 +676,7 @@ class TestTrustFilePathTraversal:
 
 
 class TestCorruptTrustStoreIsQuarantined:
-    """D17: a truncated file was silently replaced on the next write."""
+    """A truncated trust store is quarantined, not silently replaced on the next write."""
 
     def test_unreadable_file_moves_aside(self, tmp_path):
         path = tmp_path / "trusted.json"

@@ -1904,10 +1904,10 @@ class TestProviderTimeout:
 class TestCarryOverPersistsAcrossTurns:
     """Carry-over is a shared to-do list, not a delivery queue.
 
-    The loop used to mark every loaded item delivered after its first
-    successful send, so the list emptied itself whether or not anything had
-    been done about it, and an item the operator never acknowledged was gone
-    from the next prompt. Items now stay pending until the operator or the
+    Marking loaded items delivered after the first successful send would
+    empty the list whether or not anything had been done about them, and
+    an item the operator never acknowledged would be gone from the next
+    prompt. Items stay pending until the operator or the
     agent runs the skill's `done` action.
     """
 
@@ -2086,7 +2086,7 @@ class TestVoicePipeline:
 
 
 class TestChannelSurvivesFailure:
-    """P4-M6/D14: one provider outage used to kill a channel thread for good."""
+    """One provider outage must not kill a channel thread for good."""
 
     def _loop(self, provider, channel, **kw):
         return AgentLoop(
@@ -2137,7 +2137,7 @@ class TestChannelSurvivesFailure:
 
 
 class TestTwoTurnTimers:
-    """D13: one clock measured from turn start, so activity never reset it."""
+    """Two clocks: one from turn start, one reset by activity."""
 
     def test_activity_resets_the_inactivity_clock(self):
         config = _make_config()
@@ -2165,7 +2165,7 @@ class TestTwoTurnTimers:
 
 
 class TestTimeoutAnswersTheWholeBatch:
-    """P4-M3: the remaining calls in a batch were left unanswered forever."""
+    """A timeout mid-batch still answers every remaining call."""
 
     def test_every_tool_call_gets_a_result(self, tmp_path):
         config = _make_config()
@@ -2206,7 +2206,7 @@ class TestTimeoutAnswersTheWholeBatch:
 
 
 class TestRoundTripCapReply:
-    """P4-m8/D22: raw tool output was handed back as the assistant's answer."""
+    """Raw tool output is never handed back as the assistant's answer."""
 
     def test_tool_output_is_not_passed_off_as_the_reply(self, tmp_path):
         config = _make_config()
@@ -2231,7 +2231,7 @@ class TestRoundTripCapReply:
 
 
 class TestUsageResetsWithTheSession:
-    """P4-m7: /status called it "this session" and never reset it."""
+    """/status calls it "this session", so a session reset must reset it."""
 
     def test_clear_resets_the_counter(self, tmp_path):
         loop = AgentLoop(
@@ -2271,7 +2271,7 @@ class TestUsageResetsWithTheSession:
 
 
 class TestGoalStateIsVisible:
-    """P8-16: faff status read a file nothing ever wrote."""
+    """The goal file faff status reads must actually be written."""
 
     def _loop(self, tmp_path, provider):
         return AgentLoop(
@@ -2316,7 +2316,7 @@ class TestGoalStateIsVisible:
 
 
 class TestVisionRouting:
-    """D6d/D6f: images route to the vision slot and persist as paths."""
+    """Images route to the vision slot and persist as paths."""
 
     def _config(self):
         return _make_config(
@@ -2379,9 +2379,8 @@ class TestVisionRouting:
         assert "base64" not in (stored[0].content or "")
 
     def test_a_follow_up_turn_returns_to_the_conversation_model(self, tmp_path):
-        """Deliberate reversal of the old stays-on-vision rule
-        (2026-08-24): keeping the photo live made every later turn pay its
-        base64 cost on the vision slot. A follow-up like "what breed?" is
+        """Staying on the vision slot after a photo would make every later
+        turn pay its base64 cost. A follow-up like "what breed?" is
         answered from the model's own prior description in history; real
         re-inspection means resending the photo."""
         provider = _make_provider("a cat")
@@ -2411,9 +2410,9 @@ class TestVisionRouting:
         assert provider.complete.call_args[0][0].model == "llama3"
 
     def test_images_live_only_for_their_own_turn(self, tmp_path):
-        """2026-08-24: the last four images rode every request as base64
-        and kept routing every turn to the vision slot; one photo cost its
-        token weight times the rest of the session. An image's durable
+        """Images that ride every request as base64 keep routing every turn
+        to the vision slot and cost their token weight for the rest of the
+        session. An image's durable
         value is the model's own reading of it, which persists as text."""
         provider = _make_provider("ok")
         loop = AgentLoop(
@@ -2451,7 +2450,7 @@ class TestVisionRouting:
 
 
 class TestMediaAttachmentsReachTheChannel:
-    """D5: both ends existed for months and the middle wire did not."""
+    """Media on an OutboundMessage has to reach the channel's send path."""
 
     def test_skill_media_files_are_attached_to_the_reply(self, tmp_path):
         registry = MagicMock(spec=ToolRegistry)
@@ -2563,9 +2562,9 @@ class TestInboundAttachmentsReachTheAgent:
 
 
 class TestOneConversationAcrossChannels:
-    """Telegram and Discord held separate conversations (22 Aug 2026): a
-    question asked on one was unknown on the other, and every scheduled
-    job had to pick a channel to talk to. Under faff run every channel loop
+    """Separate conversations per channel would mean a question asked on
+    one is unknown on the other and every scheduled job has to pick a
+    channel. Under faff run every channel loop
     shares one session; group rooms, which other people read, do not."""
 
     def _loop(self, tmp_path, provider, channel_id, channel, **kw):
@@ -2671,9 +2670,9 @@ class TestOneConversationAcrossChannels:
 
 
 class TestCronCommand:
-    """2026-08-24: cron visibility required trusting the agent to invoke
-    cron-manager, i.e. trusting the thing being debugged; /cron is
-    deterministic and needs no model at all."""
+    """/cron is deterministic and needs no model; cron visibility must not
+    depend on the agent choosing to invoke cron-manager, the thing being
+    debugged."""
 
     def test_cron_lists_jobs(self, tmp_path):
         from faffmonkey.runtime.loop import _handle_cron
@@ -2715,10 +2714,9 @@ class TestCronCommand:
 
 
 class TestModelProviderSwitch:
-    """2026-08-24: /model main qwen-3-8-27b on an ollama-cloud slot 404'd,
-    and moving a slot to another provider required a config.json edit plus
-    a container restart, though resolve_provider builds from the slot's
-    ModelConfig on every call."""
+    """resolve_provider builds from the slot's ModelConfig on every call,
+    so /model can move a slot to another provider without a config.json
+    edit or a restart."""
 
     def _config(self):
         return _make_config(models={
@@ -2800,8 +2798,8 @@ class TestModelProviderSwitch:
 
 
 class TestDailyNoteFromTheLoop:
-    """2026-08-25: nothing reached the daily log in a day of chat. The
-    loop asks for a note itself once enough turns have passed."""
+    """The loop asks for a daily note itself once enough turns have passed,
+    so a day of chat cannot leave the daily log empty."""
 
     def test_note_is_requested_after_every_turns(self, tmp_path):
         from faffmonkey.config import DailyNoteConfig

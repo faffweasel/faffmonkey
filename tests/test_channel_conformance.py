@@ -2,10 +2,9 @@
 
 `faff run` validates each configured channel through
 `wiring._validate_protocol` before starting it, so a channel missing a
-Protocol method is a startup crash, not a latent gap. TelegramChannel
-shipped without `poll()` from 14 May to 7 August because nothing asserted
-this: the per-channel tests construct their class directly and never check
-it against the Protocol, and `_build_channels` has no test at all.
+Protocol method is a startup crash, not a latent gap. The per-channel
+tests construct their class directly and never check it against the
+Protocol, so a missing method is only caught here.
 """
 
 import sys
@@ -72,7 +71,7 @@ class TestGateActuallyRejects:
 
 @pytest.mark.parametrize("name,path", sorted(CONTRIB_CHANNEL_SOURCES.items()))
 class TestContribChannelsCarryInboundImages:
-    """D6b/D6c: a photo has to reach the loop as an inbox path.
+    """A photo has to reach the loop as an inbox path.
 
     Every shipped channel saved images to the inbox and then built an
     InboundMessage that did not mention them, so vision had no input.

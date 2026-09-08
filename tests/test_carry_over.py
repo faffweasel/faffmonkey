@@ -388,11 +388,10 @@ class TestClear:
 
 
 class TestDone:
-    """The action that replaced auto-clearing.
+    """Nothing resolves an item except done.
 
-    Items used to be marked delivered after the agent's first successful
-    reply, so the list emptied itself whether or not anything had been done
-    about an item. Nothing resolves an item now except this.
+    Clearing items after the agent's first successful reply would empty
+    the list whether or not anything had been done about them.
     """
 
     def _queue(self, skill_data, messages):
@@ -504,7 +503,7 @@ class TestDone:
 
 
 class TestItemsPersistUntilDone:
-    """The behaviour the redesign is for."""
+    """Items stay pending across turns until done resolves them."""
 
     def test_get_repeated_across_sessions_keeps_returning_the_item(self, skill_data):
         _run_script(skill_data, "add.py", ["chase the invoice"])

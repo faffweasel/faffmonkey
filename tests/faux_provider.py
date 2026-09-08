@@ -25,9 +25,9 @@ class FauxProvider:
         """Fail when the code under test made fewer provider calls than scripted.
 
         A test that queues three responses and consumes one is not testing
-        what its name says: the control flow it assumes did not happen. The
-        fake stayed silent about that, which is what allowed integration
-        tests to pass with the feature under test removed entirely.
+        what its name says: the control flow it assumes did not happen. A
+        fake that stays silent about it lets an integration test pass with
+        the feature under test removed.
         """
         if self.remaining:
             raise AssertionError(

@@ -138,10 +138,9 @@ class TestInvisibleCharEvasion:
     def test_newline_wrapped_key_redacted_without_reflowing_text(self):
         """Both halves go, the line break stays.
 
-        This asserted "\\n" not in result, which passed only because redact()
-        collapsed every whitespace run in the whole message. That flattened
-        code, logs and tables in every outbound reply for a pass that usually
-        matched nothing. The secret is what must disappear, not the layout.
+        The secret is what must disappear, not the layout: collapsing
+        whitespace would flatten code, logs and tables in every outbound
+        reply.
         """
         text = "sk-\nabcdefghijklmnopqrstuvwxyz1234"
         result = redact(text)

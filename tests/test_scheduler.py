@@ -54,8 +54,8 @@ from faffmonkey.types import CompletionResponse
 
 
 # Inside the heartbeat's default active hours (9 to 22, Asia/Bangkok).
-# Heartbeat tests that left `now` unset ran on the wall clock and failed
-# every evening with "outside-active-hours".
+# Heartbeat tests pass this as `now`; on the wall clock they fail outside
+# active hours.
 DAYTIME = datetime(2026, 5, 14, 10, 0, tzinfo=ZoneInfo("Asia/Bangkok"))
 
 
@@ -274,10 +274,9 @@ class TestStagger:
     def test_offsets_are_spread_across_jobs(self):
         """The whole point of the stagger is that jobs do not all fire at once.
 
-        The old test asserted types and bounds only, so replacing
-        _stagger_offset with `lambda name: 0` passed it while every cron job
-        fired on the same second. Distinctness per pair is not the contract
-        and is not even true: "b" and "c" collide today. A spread is.
+        Types and bounds alone are satisfied by `lambda name: 0`.
+        Distinctness per pair is not the contract and is not even true:
+        "b" and "c" collide. A spread is.
         """
         names = ["job-a", "job-b", "morning", "evening", "watchdog"]
         offsets = [_stagger_offset(n) for n in names]
@@ -1167,8 +1166,7 @@ class TestEmptyResponseRetry:
             result = scheduler.run_job(job)
 
         assert result.status == "success"
-        # 1 initial + 2 empty retries (third succeeds before all 3 retries exhausted)
-        # Actually: initial returns "", then loop: attempt 0 retry -> "", attempt 1 retry -> "finally"
+        # initial "" then retries "", "finally": three calls
         assert provider.complete.call_count == 3
 
 
@@ -1564,7 +1562,7 @@ class TestCronJobIdValidation:
         assert "Invalid job ID" in out
 
 
-# -- 8a: cron injection scanning --
+# -- cron injection scanning --
 
 class TestCronInjectionScanning:
     def test_injection_pattern_caught_before_send(self, tmp_path):
@@ -1604,7 +1602,7 @@ class TestCronInjectionScanning:
         assert "[REDACTED:" in sent_text
 
 
-# -- 8a-ii: delivered cron output enters the conversation --
+# -- delivered cron output enters the conversation --
 
 class TestCronDeliveryEntersTheConversation:
     def _scheduler(self, tmp_path, text, dirty_events=None):
@@ -1689,9 +1687,8 @@ class TestCronDeliveryEntersTheConversation:
         assert events["telegram"].is_set()
 
     def test_every_channel_is_signalled_because_they_share_the_session(self, tmp_path):
-        """Telegram and Discord used to hold separate conversations, so a
-        briefing delivered to one was invisible from the other. They are
-        two doors into one session now, and both loops must reload."""
+        """Telegram and Discord are two doors into one session, so a
+        delivery signals both loops to reload."""
         events = {"telegram": threading.Event(), "discord": threading.Event()}
         scheduler = self._scheduler(tmp_path, "briefing", dirty_events=events)
         job = CronJob(
@@ -1735,9 +1732,9 @@ class TestCronDeliveryEntersTheConversation:
 
 
 class TestDeliverToLastChannel:
-    """The heartbeat delivered to whichever channel wizard ran first, while
-    the user was talking on the other one (22 Aug 2026). A job can now say
-    "last" and follow the conversation."""
+    """A job can say "last" and follow the conversation, rather than
+    delivering to whichever channel's wizard ran first while the user
+    talks on the other."""
 
     def _scheduler(self, tmp_path, channels):
         workspace = tmp_path / "workspace"
@@ -1815,7 +1812,7 @@ class TestDeliverToLastChannel:
             t.join()
 
 
-# -- 8b: session lock prevents split messages --
+# -- session lock prevents split messages --
 
 class TestSessionLockPreventsRace:
     def test_lock_prevents_concurrent_persist(self):
@@ -1874,7 +1871,7 @@ class TestSessionLockPreventsRace:
         assert "test response" in result
 
 
-# -- 8c: provider timeout --
+# -- provider timeout --
 
 class TestProviderTimeout:
     def test_timeout_fires_and_logs_error(self, tmp_path):
@@ -1917,7 +1914,7 @@ class TestProviderTimeout:
             _complete_with_timeout(provider, request, timeout=5.0)
 
 
-# -- 8d: cron field range validation --
+# -- cron field range validation --
 
 class TestCronFieldRange:
     def test_minute_99_rejected(self):
@@ -1959,7 +1956,7 @@ class TestCronFieldRange:
         assert result == {59}
 
 
-# -- 8e: missing id skipped, others still load --
+# -- missing id skipped, others still load --
 
 class TestMissingJobId:
     def test_entry_without_id_skipped(self, tmp_path):
@@ -2002,7 +1999,7 @@ class TestMissingJobId:
         assert jobs[0].id == "good-job"
 
 
-# -- 8f: stop() wakes scheduler immediately --
+# -- stop() wakes scheduler immediately --
 
 class TestShutdownDrain:
     def test_stop_wakes_immediately(self):
@@ -2519,7 +2516,7 @@ class TestJobsChangeDetection:
         channel.send.assert_not_called()
 
 
-# -- security fix: strict job_id validation --
+# -- strict job_id validation --
 
 class TestStrictJobIdValidation:
     def test_control_characters_rejected(self, tmp_path):
@@ -2588,7 +2585,7 @@ class TestStrictJobIdValidation:
         assert len(jobs) == 0
 
 
-# -- security fix: cron step upper bound --
+# -- cron step upper bound --
 
 class TestCronStepUpperBound:
     def test_step_larger_than_field_range_rejected(self):
@@ -2608,7 +2605,7 @@ class TestCronStepUpperBound:
         assert result == {0, 30}
 
 
-# -- fix: _complete_with_timeout uses model_config.timeout --
+# -- _complete_with_timeout uses model_config.timeout --
 
 class TestConfiguredTimeout:
     def test_isolated_passes_model_timeout(self, tmp_path):
@@ -2736,7 +2733,7 @@ class TestHeartbeatWakePrompt:
         assert HEARTBEAT_JOB["context"] == "heartbeat"
 
 
-# -- fix: SessionStore constructed inside try block --
+# -- SessionStore constructed inside try block --
 
 class TestSessionStoreConstructionGuard:
     def test_constructor_error_does_not_leak(self, tmp_path):
@@ -2775,7 +2772,7 @@ class TestSessionStoreConstructionGuard:
         mock_store.close.assert_called_once()
 
 
-# -- fix: _is_stale_ack respects configured ack_max_chars --
+# -- _is_stale_ack respects configured ack_max_chars --
 
 class TestStaleAckConfigured:
     def test_custom_ack_max_chars(self):
@@ -2831,7 +2828,7 @@ class TestStaleAckConfigured:
         assert provider.complete.call_count == 2
 
 
-# -- security fix: log rotation --
+# -- log rotation --
 
 class TestLogRotation:
     """Run logs only trimmed on size, so a daily job kept every run for
@@ -2882,7 +2879,7 @@ class TestLogRotation:
         assert len(lines) == 5
 
 
-# -- security fix: shutdown waits for in-flight job --
+# -- shutdown waits for in-flight job --
 
 class TestShutdownWaitsForJob:
     def test_stop_and_wait_blocks_until_job_finishes(self):
@@ -3137,10 +3134,10 @@ class TestAgentSession:
         assert "regular-model" not in seen_models
 
 
-# -- batch 3: the fire decision --
+# -- the fire decision --
 
 class TestStaggerDeadZone:
-    """C5: any stagger of 60s or more outlived the minute it was measured in."""
+    """A stagger of 60s or more must not outlive the minute it was measured in."""
 
     def _scheduler(self, tmp_path, job_id, schedule):
         config = _make_config()
@@ -3191,9 +3188,8 @@ class TestStaggerDeadZone:
     def test_a_late_tick_still_owes_a_heavily_staggered_job_its_run(self, tmp_path):
         """The catch-up window has to be wider than the largest stagger.
 
-        Found by tests/mutations.py: setting CATCHUP_MINUTES to 0 left
-        the whole suite green, while a top-of-hour job with a near-maximum
-        stagger would silently never fire once a tick cycle ran long.
+        With CATCHUP_MINUTES at 0, a top-of-hour job with a near-maximum
+        stagger never fires once a tick cycle runs long.
         """
         stagger = _stagger_offset("job195")
         assert stagger > 4 * 60, "pick a job id whose stagger is near the maximum"
@@ -3215,7 +3211,7 @@ class TestStaggerDeadZone:
 
 
 class TestTickAcrossDST:
-    """M8: tick() matched wall clock, so one transition lost an hour of runs."""
+    """tick() matches instants, not wall clock, or a DST transition loses an hour of runs."""
 
     def _scheduler(self, tmp_path, schedule, tz_name):
         config = _make_config(timezone=ZoneInfo(tz_name))
@@ -3267,7 +3263,7 @@ class TestTickAcrossDST:
 
 
 class TestCronStatePersistence:
-    """D27: both dicts were process-local, so a restart re-fired and un-backed-off."""
+    """Last-fired and backoff state persist across a restart."""
 
     def _make(self, tmp_path, text="done"):
         config = _make_config()
@@ -3318,7 +3314,7 @@ class TestCronStatePersistence:
 
 
 class TestPreflightScope:
-    """D10: probing remote providers unauthenticated made a 401 look like an outage."""
+    """The preflight does not probe remote providers; unauthenticated, a 401 reads as an outage."""
 
     def test_remote_endpoint_is_not_probed(self):
         clear_preflight_cache()
@@ -3343,7 +3339,7 @@ class TestPreflightScope:
 
 
 class TestPreflightFailureIsVisible:
-    """M3: the only exit that wrote no run log and recorded no backoff."""
+    """A preflight failure writes a run log and records backoff like every other exit."""
 
     def _scheduler(self, tmp_path):
         config = _make_config()
@@ -3374,7 +3370,7 @@ class TestPreflightFailureIsVisible:
 
 
 class TestDeliveryFailureIsContained:
-    """M2: an unguarded send aborted the tick and re-fired the one-shot forever."""
+    """A failed send must not abort the tick, or a one-shot re-fires forever."""
 
     def _scheduler(self, tmp_path, channel):
         config = _make_config()
@@ -3441,7 +3437,7 @@ class TestDeliveryFailureIsContained:
 
 
 class TestTickStopsOnShutdown:
-    """M13: stop_and_wait proved the lock was free, which is true between jobs."""
+    """stop_and_wait must stop the tick, not merely observe a free lock, which is true between jobs."""
 
     def test_remaining_jobs_are_not_run(self, tmp_path):
         config = _make_config()
@@ -3478,7 +3474,7 @@ class TestTickStopsOnShutdown:
 
 
 class TestJobShapeValidation:
-    """M16 and m17: shapes that ran and reported success without doing anything."""
+    """Job shapes that would run and report success without doing anything are rejected at load."""
 
     def _load(self, tmp_path, entry):
         workspace = tmp_path / "workspace"
@@ -3526,7 +3522,7 @@ class TestJobShapeValidation:
 
 
 class TestAgentSessionSlot:
-    """M9: the preflight probed cron_default while the turn ran on conversation."""
+    """The preflight probes the same slot the turn runs on."""
 
     def test_agent_job_runs_on_cron_default(self, tmp_path):
         seen = []
@@ -3572,7 +3568,7 @@ class TestAgentSessionSlot:
 
 
 class TestRunLogTimestamps:
-    """D11: local timestamps sorted wrong whenever the offset changed."""
+    """Run-log timestamps are UTC Z; local offsets sort wrong whenever the offset changes."""
 
     def test_timestamps_are_utc_with_a_z_suffix(self, tmp_path):
         config = _make_config(timezone=ZoneInfo("Asia/Bangkok"))
@@ -3612,7 +3608,7 @@ class TestRunLogTimestamps:
 
 
 class TestCronLogRetention:
-    """D15: nothing ever deleted a log, and /status read every line of each."""
+    """Run logs are retention-trimmed; /status reads every line of each."""
 
     def test_logs_for_deleted_jobs_are_removed(self, tmp_path):
         _log_run(tmp_path, RunLog(timestamp=utc_now_iso(), job_id="live", status="success"))
@@ -3632,7 +3628,7 @@ class TestCronLogRetention:
 
 
 class TestDeleteJobIsAtomic:
-    """m19: an unlocked read-modify-write raced the cron-manager skill."""
+    """Delete is a locked read-modify-write; the cron-manager skill writes the same file."""
 
     def test_other_jobs_survive_and_no_partial_file_is_left(self, tmp_path):
         workspace = tmp_path / "workspace"
@@ -3650,7 +3646,7 @@ class TestDeleteJobIsAtomic:
 
 
 class TestSkillErrorIsLoud:
-    """P5-M5/D14: a skill that exited 1 logged success and delivered its stderr."""
+    """A skill that exits non-zero is a failure, not a success with stderr as the message."""
 
     def _scheduler(self, tmp_path, channel=None):
         config = _make_config()
@@ -3704,7 +3700,7 @@ class TestSkillErrorIsLoud:
 
 
 class TestCorruptCronLogIsVisible:
-    """P2-m5: a kill mid-append silently cost two runs."""
+    """A log truncated by a kill mid-append is reported, not silently skipped."""
 
     def test_unreadable_line_is_logged(self, tmp_path, caplog):
         import logging
@@ -3790,9 +3786,8 @@ class TestRecordedDeliveryCarriesItsPrompt:
 
 
 class TestToolSyntaxGuard:
-    """2026-08-24: a no-tools cron session delivered raw "<function_calls>"
-    XML to Telegram; nothing anywhere detected tool-call syntax written as
-    text."""
+    """A no-tools session can write tool-call syntax as text; the guard
+    catches it before it reaches a channel."""
 
     def _setup(self, tmp_path):
         workspace = tmp_path / "workspace"

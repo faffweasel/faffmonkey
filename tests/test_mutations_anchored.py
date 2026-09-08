@@ -2,8 +2,7 @@
 
 The harness treats a missing anchor as an error, but only when it is run,
 and it is run by hand. A refactor that moves the anchored line otherwise
-retires the check unnoticed: the agent-mode empty-response mutation sat
-unanchored for a day after its line was renamed.
+retires the check unnoticed.
 """
 
 import pytest
