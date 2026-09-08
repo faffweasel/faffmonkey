@@ -118,10 +118,9 @@ def _redact_whitespace_wrapped(text: str) -> str:
 
     Two rules keep this from destroying ordinary text. A match may span at
     most _MAX_WRAP_GAPS whitespace runs, and each contiguous run is redacted
-    as its own span rather than the whole first-to-last range. The previous
-    version did neither, so "Ask-me about the following items one two three
-    four" matched the sk- pattern once whitespace was stripped and collapsed
-    to "A[REDACTED]".
+    as its own span rather than the whole first-to-last range. Without both,
+    a sentence containing "sk-" matches once whitespace is stripped and the
+    redaction eats the rest of the paragraph.
     """
     stripped_chars: list[str] = []
     strip_pos: list[int] = []
@@ -169,23 +168,12 @@ def _redact_url_credentials(text: str) -> str:
 def redact(text: str) -> str:
     """Remove secrets, and change nothing else.
 
-    Two behaviours were removed here deliberately.
-
-    The whitespace run collapse rewrote every outbound message and every
-    stored tool result onto a single line, destroying the formatting of
-    code, logs and tables for a redaction pass that usually matched
-    nothing.
-
-    The whitespace-stripping scan joined the text into one string, matched
-    patterns against it, and mapped the hit back as a single span. It
-    could not tell a line-wrapped key from ordinary prose: "Ask-me about
-    the following items one two three four" strips to a string the sk-
-    pattern matches, and the span then covered the whole sentence, so an
-    ordinary word containing "sk-" destroyed everything after it. A secret
-    contains no whitespace, so a match is bounded at whitespace and the
-    contiguous scan below is the one that can find it. The multi-line
-    PRIVATE KEY block is matched by its own pattern, which spans newlines
-    explicitly.
+    No whitespace collapsing and no reflow: this runs on every outbound
+    message and every stored tool result, and code, logs and tables must
+    come out formatted as they went in. A secret contains no whitespace, so
+    matches are bounded at whitespace runs (see _redact_whitespace_wrapped
+    for the line-wrapped case). The multi-line PRIVATE KEY block is matched
+    by its own pattern, which spans newlines explicitly.
     """
     text = _INVISIBLE.sub("", text)
     text = _redact_normalized(text)

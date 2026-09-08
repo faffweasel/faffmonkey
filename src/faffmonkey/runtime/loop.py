@@ -612,8 +612,7 @@ class AgentLoop:
             self._notify_peers()
         self.history = []
         # /status calls this "Tokens this session", so a session reset has
-        # to reset it. Otherwise a brand-new session reported the whole
-        # process total.
+        # to reset it.
         self.usage_total = TokenUsage()
 
     def _new_session(self) -> None:
@@ -727,11 +726,10 @@ class AgentLoop:
     def _maybe_daily_note(self) -> None:
         """Record the day from the loop, not from the model's goodwill.
 
-        AGENTS.md asked the agent to append to today's log as things
-        happened; over a full day of conversation it never did once, and
-        the evening job that was meant to catch what it missed failed on
-        a provider error, so the day was lost. Runs after the reply for
-        the same reason compaction does.
+        An instruction in AGENTS.md to append to today's log is not
+        reliably followed, and a single end-of-day job that fails loses
+        the whole day. Runs after the reply for the same reason compaction
+        does.
         """
         if not (self._store and self._session_id and self._workspace):
             return
@@ -786,10 +784,8 @@ class AgentLoop:
         """
         cutoff = self._live_image_cutoff()
         if any(m.images for m in self.history[cutoff:]):
-            # The route key is always present because DEFAULT_ROUTING carries
-            # it, so testing for the key alone made this fallback dead code.
-            # What actually fails is a route pointing at a slot with no model
-            # behind it, which raised ConfigError instead of falling back.
+            # The route key is always present (DEFAULT_ROUTING carries it);
+            # what can be missing is the slot it points at, so check the slot.
             slot = self.config.routing.get("image_understanding")
             if slot is not None and slot in self.config.models:
                 return "image_understanding"
@@ -1016,14 +1012,13 @@ class AgentLoop:
                     continue
 
                 if self._check_turn_duration():
-                    # Every remaining call in the batch needs a result too.
-                    # Returning here left the persisted assistant message
-                    # carrying tool_calls that nothing ever answered, which
-                    # strict providers reject on every later turn.
+                    # Every remaining call in the batch needs a result too:
+                    # an assistant message whose tool_calls have no answers
+                    # is rejected by strict providers on every later turn.
                     with _lock:
-                        # Slice by position. index(tc) matches by value, so a
-                        # batch containing two identical tool calls restubbed
-                        # from the first one and answered it twice.
+                        # Slice by position, not index(tc): index matches by
+                        # value, and two identical tool calls in one batch
+                        # would both resolve to the first.
                         for remaining in tool_calls[idx:]:
                             err = "turn killed: inactivity timeout"
                             self.history.append(Message(role="tool", content=err, tool_call_id=remaining.id))
@@ -1061,10 +1056,8 @@ class AgentLoop:
                     redacted_content = redact(result.content)
                 except Exception as e:
                     # Every tool_call in the persisted assistant message must
-                    # get a result. An exception escaping this loop left
-                    # orphaned tool_calls in the session, which strict
-                    # providers reject on every later turn: one failure
-                    # poisoned the conversation permanently.
+                    # get a result; an orphaned tool_call is rejected by
+                    # strict providers on every later turn.
                     logger.exception("tool %s raised", tc.name)
                     redacted_content = f"tool error: {redact(str(e))}"
 
@@ -1093,9 +1086,8 @@ class AgentLoop:
     def _persist_goal(self) -> None:
         """Mirror goal state to workspace so `faff status` can see it.
 
-        The file was read by faff status and written by nothing, so an
-        operator checking on a running goal was told there was none, and
-        started a second overlapping one.
+        Without the file, an operator checking on a running goal is told
+        there is none and may start a second overlapping one.
         """
         path = self._goal_state_path()
         if path is None:
@@ -1110,10 +1102,9 @@ class AgentLoop:
                 "channel": self._channel_id,
                 "turns": self._goal.turn_count,
                 "max_turns": self._goal.max_turns,
-                # Whoever is running it. A goal file left behind by a
-                # process that died is indistinguishable from a live one
-                # without this, so faff status reported a goal as active
-                # that nothing was working on.
+                # Whoever is running it: without a pid, a goal file left
+                # behind by a dead process is indistinguishable from a live
+                # one.
                 "pid": os.getpid(),
             }, indent=2) + "\n")
         except OSError as e:
@@ -1166,11 +1157,10 @@ class AgentLoop:
     def _refresh_system_prompt(self) -> None:
         """Rebuild the prompt so the agent's clock and memory keep moving.
 
-        system_prompt was assigned once in __init__ and never reassigned, so
-        the current time, today's daily log and MEMORY.md were frozen at
-        process start. A long-running container still believed it was the
-        day it booted, weeks later. Session rotation does not help: it swaps
-        the session id and reuses the same prompt string.
+        The current time, today's daily log and MEMORY.md are baked into
+        the prompt, and session rotation reuses the same prompt string, so
+        a prompt built once at start-up would stay frozen for the life of
+        the container.
 
         Rebuilt once per turn, not per LLM call, so a turn making twenty
         tool calls still reads the workspace files once.
@@ -1232,9 +1222,8 @@ class AgentLoop:
     def _resolve_inbound_text(self, msg: InboundMessage) -> tuple[str | None, bool]:
         """Inbound text, or None when a voice message could not be read.
 
-        None is not a transcript. Substituting a placeholder persisted it
-        as the user's own words, so the conversation recorded them saying
-        "[transcription not configured]" and the model answered it.
+        None is not a transcript: a placeholder would be persisted as the
+        user's own words and answered by the model.
         """
         if msg.audio is None:
             return msg.text, False
@@ -1279,15 +1268,13 @@ class AgentLoop:
         """
         text, was_voice = self._resolve_inbound_text(msg)
         if text is not None and was_voice:
-            # The transcript arrived looking like typed text, so the agent
-            # looked for an audio file to transcribe and said it could not
-            # send voice, then the reply was synthesised anyway.
+            # Mark the transcript, or it reads as typed text and the agent
+            # knows neither that it was spoken nor that the reply will be
+            # synthesised.
             text = f"{text}\n[voice note, transcribed]"
         images = [str(p) for p in msg.images]
         if text is not None and msg.attachments:
-            # A document was saved to the inbox and the path stopped there,
-            # so the agent was told a file had arrived and had no way to
-            # address it short of guessing. It is not an image part; naming
+            # Name the saved path: an attachment is not an image part, and
             # the path is what makes file_read usable on it.
             refs = ", ".join(str(p) for p in msg.attachments)
             text = f"{text}\n[file saved to: {refs}]"
@@ -1351,10 +1338,9 @@ class AgentLoop:
 
                 msg = self.channel.receive()
                 if msg is None:
-                    # None means "nothing yet". Only is_closed() ends the
+                    # None means "nothing yet"; only is_closed() ends the
                     # loop. Queue-backed channels return None on every idle
-                    # poll, so breaking here ended the session one second
-                    # after start.
+                    # poll.
                     if self.channel.is_closed():
                         break
                     continue

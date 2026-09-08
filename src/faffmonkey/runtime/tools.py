@@ -210,9 +210,9 @@ def _is_operator_controlled(relative_path: str) -> bool:
 
 
 def _protected_hint(relative_path: str) -> str:
-    """What the agent should do instead. "Confirm with the user" implied an
-    approval that would unlock the file; there is none, and the agent asked,
-    was told yes, tried again, and then invented reasons it still failed."""
+    """What the agent should do instead. Say plainly that no approval
+    unlocks the file: a hint that implies one sends the agent to ask,
+    retry, and fail again."""
     normalised = os.path.normpath(relative_path.replace("\\", "/")).casefold()
     if normalised == "config/jobs.json":
         return (
@@ -513,9 +513,8 @@ def _match_existing_case(workspace: Path, relative_path: str) -> str:
     """Component by component, substitute the one existing entry that
     differs from the requested name only by case. The container's
     filesystem is case-sensitive and the model capitalises a name the
-    way the user last typed it, so memory/people/Phill.md and
-    memory/people/phill.md both got created and each held half the
-    record. Symlinks are never substituted, so the callers' symlink
+    way the user last typed it, so without this a record splits across
+    two files differing only by case. Symlinks are never substituted, so the callers' symlink
     refusal still applies to the path they were given."""
     parts = Path(relative_path).parts
     if relative_path.startswith("/") or ".." in parts:
@@ -635,12 +634,10 @@ def _extract_workspace_file_hashes(command: str, workspace: Path) -> dict[str, s
             except OSError:
                 continue
         elif not candidate.exists() and ("/" in token or "." in token):
-            # Record that it was absent. Skipping it meant an approval for
-            # "bash deploy.sh", given while deploy.sh did not exist, still
-            # stood after the agent wrote deploy.sh: the file was in no hash
-            # map, so nothing compared it. An approval is a promise about
-            # the filesystem the command will act on, and a path that did
-            # not exist is a stronger reason to re-approve, not a weaker one.
+            # Record that it was absent so _verify_toctou can compare it.
+            # An approval is a promise about the filesystem the command
+            # will act on, and a path that did not exist is a stronger
+            # reason to re-approve, not a weaker one.
             hashes[str(raw_path)] = _ABSENT
     return hashes
 
@@ -848,10 +845,9 @@ class ToolRegistry:
                 break
 
     def _handle_file_list(self, args: dict) -> ToolResult:
-        """file_read could open any workspace file the agent could name and
-        nothing let it find the names: shell_exec is denied under faff run,
-        where no one can answer an ask, so over a channel the agent had no
-        way to see what was in documents/ or memory/."""
+        """Directory listing without a shell: shell_exec is denied under
+        faff run, where no one can answer an ask, so this is how the agent
+        over a channel finds the names file_read can open."""
         call_id = args["_call_id"]
         path_str = args.get("path", ".")
         if not isinstance(path_str, str) or not path_str:
@@ -981,7 +977,7 @@ class ToolRegistry:
 
         rel_resolved = str(resolved.relative_to(self._workspace.resolve()))
         # Every doc the model has read calls the directory "workspace/", so
-        # it wrote workspace/cake.md and got workspace/workspace/cake.md.
+        # a path starting with it is a doubled prefix.
         first = rel_resolved.split("/", 1)[0].casefold()
         if first == "workspace":
             inner = rel_resolved.split("/", 1)[1] if "/" in rel_resolved else ""
@@ -994,8 +990,8 @@ class ToolRegistry:
                 ),
                 is_error=True,
             )
-        # Likewise "state/commands.json" became workspace/state/commands.json,
-        # a file nothing reads, and the agent reported the job done.
+        # Likewise state/: it is outside the workspace, and a write to
+        # workspace/state/ lands in a file nothing reads.
         if first == "state":
             return ToolResult(
                 id=call_id,

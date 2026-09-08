@@ -257,10 +257,9 @@ class SessionStore:
             "UPDATE sessions SET active = 0, updated_at = ? WHERE id = ?",
             (self._now(), session_id),
         )
-        # Every other mutating method defers to the caller's transaction.
-        # This one committed regardless, which would end a caller's
-        # transaction early while _in_transaction stayed True, so the writes
-        # after it fell into autocommit and a rollback undid nothing.
+        # Defer to the caller's transaction like every other mutating
+        # method: an unconditional commit would end it early while
+        # _in_transaction stayed True, leaving later writes in autocommit.
         if not self._in_transaction:
             self._conn.commit()
         logger.info("deactivated session %s", session_id)

@@ -221,8 +221,8 @@ def _is_nothing_to_save(text: str) -> bool:
 def refresh_memory_index(workspace: Path, tz: str) -> None:
     """Bring the memory-search index up to date after the runtime wrote
     to memory. The index is otherwise refreshed only when the agent
-    searches, and a week of daily notes went unindexed because it never
-    did. Incremental and hash-based: unchanged files cost one hash each.
+    searches, so runtime writes would stay unindexed until it does.
+    Incremental and hash-based: unchanged files cost one hash each.
     A failure is logged and never fails the write that triggered it."""
     if not (workspace / "skills" / "memory-search" / "scripts" / "index.py").is_file():
         return
@@ -405,8 +405,8 @@ def daily_note_due(
 
 def _append_daily_note(workspace: Path, content: str, now: datetime) -> Path:
     """The runtime picks the file (today, in the user's timezone) and only
-    ever appends. The model wrote to yesterday's log when it was left to
-    choose, because that was the file with content in it."""
+    ever appends. Left to choose, the model favours whichever log already
+    has content, which may be yesterday's."""
     path = workspace / "memory" / "daily" / f"{now.date().isoformat()}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = content.strip().splitlines()
@@ -594,11 +594,10 @@ def _determine_protected_tail(
 def _just_after(timestamp: str | None) -> str | None:
     """One microsecond after a stored timestamp.
 
-    get_history orders by timestamp, so a stub result built with no
-    timestamp got the current wall clock on re-insert and reappeared at
-    the end of the conversation, detached from the call it answers. That
-    is precisely the invalid sequence the repair exists to prevent, and
-    strict providers reject it on every subsequent turn.
+    get_history orders by timestamp, so a stub result with no timestamp
+    would take the current wall clock on re-insert and land at the end of
+    the conversation, detached from the call it answers; strict providers
+    reject that sequence on every subsequent turn.
     """
     if not timestamp:
         return None
@@ -754,9 +753,8 @@ def _summarise(
         logger.warning("compaction tier 1 (normal) failed: %s", e)
 
     try:
-        # "cheap" is a model slot, not a routing task. resolve_model looks
-        # its argument up in config.routing, so this raised ConfigError on
-        # every real config and the documented three-tier ladder was two.
+        # "cheap" is a model slot, not a routing task, so it is read from
+        # config.models rather than through resolve_model.
         cheap_mc = config.models.get("cheap")
         if cheap_mc is None:
             raise ConfigError("no 'cheap' model slot configured")
@@ -905,8 +903,6 @@ def compact(
                 msg.tool_calls,
                 msg.tool_call_id,
                 timestamp=msg.timestamp,
-                # images= keeps the protected tail's image references through the
-                # rewrite.
                 images=msg.images or None,
             )
         session_store.commit()

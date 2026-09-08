@@ -35,9 +35,9 @@ PREFLIGHT_NEGATIVE_CACHE_SECONDS = 60
 STALE_ACK_PATTERNS = ["on it", "checking", "let me", "pulling"]
 
 # A no-tools completion (isolated, main, heartbeat escalation) that tries to
-# call a tool writes the call as text, and delivering that verbatim put raw
-# "<function_calls>" XML in the operator's Telegram. Conservative markers
-# only: prose does not contain these.
+# call a tool writes the call as text; delivered verbatim it is raw XML in
+# the operator's channel. Conservative markers only: prose does not contain
+# these.
 _TOOL_SYNTAX_MARKERS = ("<function_calls>", "<invoke name=", "<tool_call>", "<|tool_call")
 
 _VALID_SESSIONS = frozenset({"isolated", "main", "none", "agent"})
@@ -151,13 +151,12 @@ def _cross_field_error(
     """Reject job shapes that run but cannot do what the author meant.
 
     Only `session: "none"` reads `skill`; every other mode sends
-    `prompt or ""`, so `{"skill": "watchdog"}` on the default session sent
-    an empty user turn to the model every five minutes, delivered whatever
-    came back, and logged success.
+    `prompt or ""`, so a skill-only job on any other session would run an
+    empty user turn and log success.
     """
-    # Documented as main-only in architecture.md and in cron-manager's
-    # SKILL.md, and accepted on any mode. An isolated job carrying it
-    # flushed memory and rotated a main session it had never run in.
+    # rotate_session is main-only (architecture.md, cron-manager SKILL.md):
+    # on any other mode it would flush and rotate a main session the job
+    # never ran in.
     if rotate_session and session != "main":
         return f"rotate_session is only valid on session 'main', not {session!r}"
     if context == "heartbeat":
@@ -228,8 +227,7 @@ def load_jobs(workspace: Path) -> list[CronJob]:
                     continue
             enabled = entry.get("enabled", True)
             rotate_session = entry.get("rotate_session", False)
-            # "false" is truthy, and LLM-written JSON produces it. Every
-            # other field here is validated; these two were not.
+            # "false" is truthy, and LLM-written JSON produces it.
             if not isinstance(enabled, bool):
                 logger.error("skipping job %r: enabled must be true or false, got %r", job_id, enabled)
                 continue
@@ -310,8 +308,8 @@ def _delete_job(workspace: Path, job_id: str) -> None:
 
 
 def utc_now_iso() -> str:
-    """Run-log timestamps are UTC with a Z suffix, so the string sort in
-    recent_cron_runs holds across timezone changes.
+    """Run-log timestamps are UTC with a Z suffix, so every entry names an
+    unambiguous instant.
     """
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -319,8 +317,8 @@ def utc_now_iso() -> str:
 def render_timestamp(raw: str, tz: ZoneInfo, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
     """Render a stored run-log timestamp in the display timezone.
 
-    Entries written before the switch to UTC carry a local offset or none
-    at all; both still render, so old history stays readable.
+    Stored timestamps may carry a local offset or none at all; both
+    render.
     """
     dt = parse_timestamp(raw, tz)
     if dt is None:
@@ -342,10 +340,9 @@ def _run_sort_key(raw: str) -> datetime:
     """Order run logs by instant, not by the text of the timestamp.
 
     Sorting the strings is only correct while every entry carries the same
-    suffix. Entries written before the switch to UTC carry a local offset,
-    and "+07:00" sorts before "Z" in ASCII whatever instant it names, so a
-    history spanning the switch came back interleaved. An unparseable
-    timestamp sorts oldest rather than landing somewhere arbitrary.
+    suffix; entries can carry different offsets, and "+07:00" sorts before
+    "Z" in ASCII whatever instant it names. An unparseable timestamp sorts
+    oldest rather than landing somewhere arbitrary.
     """
     return parse_timestamp(raw, timezone.utc) or datetime.min.replace(tzinfo=timezone.utc)
 
@@ -443,9 +440,9 @@ def recent_cron_runs(state_dir: Path, limit: int | None = 10) -> list[RunLog]:
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:
-                # Silence here hid the loss. A kill mid-append merges a
-                # partial record with the next complete one, so a single
-                # bad line quietly costs two runs.
+                # Warn rather than skip silently: a kill mid-append merges
+                # a partial record with the next complete one, so one bad
+                # line costs two runs.
                 logger.warning(
                     "unreadable entry in cron log %s line %d, skipping",
                     log_file.name, lineno,
@@ -613,9 +610,8 @@ def due_fire_time(
     at the first real instant after it.
 
     A match is only due once `now` has passed the matched minute plus the
-    job's stagger. The previous code required `now` to still be inside the
-    matched minute, which any stagger of 60 or more outlived, so roughly
-    80 percent of top-of-hour jobs could never fire at all.
+    job's stagger; requiring `now` to still be inside the matched minute
+    would be outlived by any stagger of 60 seconds or more.
     """
     now_minute = now.astimezone(timezone.utc).replace(second=0, microsecond=0)
     # The window must cover the largest stagger this job could be given,
@@ -646,7 +642,7 @@ def due_fire_time(
             # astimezone marks the second instance fold=1. An hourly job
             # should fire in both, because both really are that hour. A job
             # naming specific hours means once a day, so it takes the first
-            # occurrence only; otherwise a 01:30 reminder arrived twice.
+            # occurrence only.
             names_specific_hours = len(fields["hour"]) < 24
             if not (local.fold == 1 and names_specific_hours):
                 stagger = _stagger_for(job_id, local.minute, fields)
@@ -682,7 +678,7 @@ def provider_preflight(base_url: str) -> bool:
     """Cheap liveness probe for a local provider before a cron run.
 
     Only local endpoints are probed, as documented: a remote provider is
-    reachable or not on its own terms, and probing it unauthenticated made
+    reachable or not on its own terms, and probing it unauthenticated makes
     a 401 look like an outage. For the same reason any HTTP status counts
     as reachable; only a transport error with no status means down.
     """
@@ -977,11 +973,10 @@ def _record_delivery(
     agent, isolated and none all deliver and none of them touches the store,
     and none has no LLM exchange to persist at all.
 
-    The prompt goes in with it. Recording only the output left the agent able
-    to quote what it sent and unable to say why, and left the operator with
-    no way to reconstruct afterwards which instruction produced which
-    message. It is condensed rather than stored whole, because this line is
-    replayed on every later turn.
+    The prompt goes in with it, so the agent can say why it sent the
+    message and the operator can trace which instruction produced it. It
+    is condensed rather than stored whole, because this line is replayed
+    on every later turn.
     """
     from faffmonkey.runtime.session import SessionStore
 
@@ -1039,17 +1034,14 @@ def _load_triggers(workspace: Path) -> dict | None:
 
 def _is_no_reply(text: str) -> bool:
     """A bare NO_REPLY however the model dressed it: quotes, backticks,
-    trailing punctuation, lowercase. An exact match let "NO_REPLY." reach
-    the user as a message."""
+    trailing punctuation, lowercase; an exact match would deliver
+    "NO_REPLY." as a message."""
     return text.strip().strip("`'\"*.!\t \n").casefold() == "no_reply"
 
 
 def _heartbeat_skip_reason(config: Config, now: datetime) -> str | None:
-    """Why this heartbeat run should not happen.
-
-    Both settings were documented, parsed and validated, and then read by
-    nothing: a disabled heartbeat still ran, and active_hours never
-    stopped a 3am escalation.
+    """Why this heartbeat run should not happen: heartbeat.enabled and
+    active_hours are enforced here and nowhere else.
     """
     if not config.heartbeat.enabled:
         return "heartbeat-disabled"
@@ -1366,10 +1358,10 @@ class Scheduler:
     channels: dict[str, Channel]
     search_provider: SearchProvider | None = None
     # False for a manual `faff cron run`: that builds a fresh Scheduler
-    # holding only the one job it was asked about, so saving state wrote a
-    # cron-state.json containing that job alone and wiped every other job's
-    # last-fire time and backoff. A debugging command must not mutate the
-    # thing being debugged.
+    # holding only the one job it was asked about, so saving state would
+    # write a cron-state.json containing that job alone and wipe every
+    # other job's last-fire time and backoff. A debugging command must not
+    # mutate the thing being debugged.
     persist_state: bool = True
     # False for a manual `faff cron run`, which has no channels: the output
     # is returned on the RunLog for the operator to read instead of being
@@ -1549,9 +1541,9 @@ class Scheduler:
     def _drop_one_shot(self, job: CronJob) -> None:
         """Delete a fired one-shot without announcing it as a user edit.
 
-        _delete_job changes jobs.json, so the next _check_jobs_changed
-        diffed it against a stale snapshot and told every channel a job had
-        been "removed", as if a human had edited the file.
+        _delete_job changes jobs.json, so the hash and snapshot are updated
+        here too; otherwise the next _check_jobs_changed would diff against
+        a stale snapshot and announce the job as removed by a human.
         """
         _delete_job(self.workspace, job.id)
         jobs_path = self.workspace / "config" / "jobs.json"
@@ -1722,10 +1714,9 @@ class Scheduler:
             if scan_hit is not None:
                 logger.warning("cron response flagged for job %s: %s", job.id, scan_hit)
             delivered = redact(text)
-            # An unguarded send propagated out of run_job and out of tick,
-            # so one flaky network call skipped every job behind it, left
-            # the fired one-shot in place to re-run 30 seconds later, and
-            # wrote no run log at all.
+            # Guard the send: an exception escaping here would leave the
+            # jobs behind this one unrun, the one-shot in place to re-run
+            # next tick, and no run log.
             try:
                 self.channels[target].send(OutboundMessage(text=delivered))
             except Exception as e:

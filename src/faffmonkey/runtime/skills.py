@@ -92,8 +92,7 @@ def unmet_requirements(
 
     `commands` is the loaded commands.json. invoke() merges it into the
     subprocess environment, so a required env var it supplies is met at
-    run time; checking os.environ alone hid every skill that required a
-    command-seam key, and then satisfied that requirement on invocation.
+    run time and must count here, not only os.environ.
     """
     raw = frontmatter.get("metadata", "")
     if not raw:
@@ -134,10 +133,9 @@ def scan_skills(
     for skill_dir in sorted(skills_dir.iterdir()):
         if not skill_dir.is_dir():
             continue
-        # _replace_tree builds its staging and rollback trees as <name>.new
-        # and <name>.old inside this directory, so an interrupted install
-        # left a duplicate or half-copied skill in the agent's catalog,
-        # listed under the same frontmatter name as the real one.
+        # _replace_tree stages installs as <name>.new and <name>.old inside
+        # this directory; an interrupted install can leave one behind, and
+        # it must not appear in the catalog under the real skill's name.
         if skill_dir.name.endswith((".new", ".old")):
             continue
         skill_md = skill_dir / "SKILL.md"
@@ -223,7 +221,7 @@ def invoke(
         return f"invalid action: {action}", [], True
 
     # A skill that lists its actions gets an allow-list. Without one,
-    # every shared module in scripts/ was reachable: invoking one exits 0
+    # every shared module in scripts/ is reachable: invoking one exits 0
     # with no output, which reads to the model as a successful action.
     skill_md = skill_dir / "SKILL.md"
     if skill_md.is_file():
