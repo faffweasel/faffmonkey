@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 import shutil
@@ -127,6 +128,25 @@ def _serialize_messages(
             for tc in msg.tool_calls:
                 lines.append(f"[{msg.role}]: (tool_call: {tc.name})")
     return "\n".join(lines)
+
+
+def _without_images(messages: list[Message]) -> list[Message]:
+    """History for a summariser, carrying that an image was sent but not
+    the image. The flush runs on the compaction and conversation slots,
+    which are routed to cheap text models; one that cannot accept image
+    input rejects the whole request, losing every memory the flush would
+    have written. Everything else on the message is kept, because dropping
+    a tool_call here would orphan the tool result that follows it.
+    """
+    stripped: list[Message] = []
+    for msg in messages:
+        if not msg.images:
+            stripped.append(msg)
+            continue
+        note = f"[{len(msg.images)} image(s) omitted]"
+        content = f"{msg.content}\n{note}" if msg.content else note
+        stripped.append(dataclasses.replace(msg, content=content, images=[]))
+    return stripped
 
 
 def _find_existing_summary(messages: list[Message]) -> str | None:
@@ -300,7 +320,10 @@ def memory_flush(
     if not history:
         return FLUSH_NOTHING
 
-    messages = [Message(role="system", content=_FLUSH_SYSTEM_PROMPT), *history]
+    messages = [
+        Message(role="system", content=_FLUSH_SYSTEM_PROMPT),
+        *_without_images(history),
+    ]
 
     # A model that answered wrongly twice is not asked again under the
     # next task's name; one that raised may have hit a transient fault.

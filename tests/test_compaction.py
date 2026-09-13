@@ -37,7 +37,13 @@ from faffmonkey.runtime.compaction import (
 )
 from faffmonkey.runtime.session import SessionStore
 from faffmonkey.runtime.tokens import count_tokens
-from faffmonkey.types import CompletionRequest, CompletionResponse, Message, ToolCall
+from faffmonkey.types import (
+    CompletionRequest,
+    CompletionResponse,
+    Message,
+    ToolCall,
+    message_to_dict,
+)
 
 from tests.faux_provider import FauxProvider, faux_response
 
@@ -325,6 +331,35 @@ class TestMemoryFlush:
 
         assert (workspace / "MEMORY.md").exists()
         assert "Friday" in (workspace / "MEMORY.md").read_text()
+
+    def test_history_images_are_not_sent_to_the_summariser(self, tmp_path):
+        """No message in a flush request serialises to an image part.
+
+        The flush is routed to cheap text-only slots. A request carrying an
+        image_url part is rejected whole, so one photo anywhere in the
+        retained history discards every memory the flush would have saved.
+        """
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        photo = tmp_path / "photo.png"
+        photo.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        store = SessionStore(state_dir / "sessions.db")
+        session = store.get_or_create_main_session("test")
+        store.append_message(
+            session.id, "user", "here is the whiteboard", images=[str(photo)],
+        )
+
+        provider = FauxProvider([_flush_ok_response()])
+        memory_flush(store, session.id, workspace, lambda mc: provider, _make_config())
+
+        sent = provider.calls[0].messages
+        assert all(
+            isinstance(message_to_dict(m).get("content", ""), str) for m in sent
+        )
+        assert any("image(s) omitted" in (m.content or "") for m in sent)
 
     def test_no_crash_on_empty_history(self, tmp_path):
         state_dir = tmp_path / "state"

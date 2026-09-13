@@ -608,7 +608,10 @@ saw them.
 - **Memory flush** (before compaction, on `/new`, on session rotation):
   the history is sent with a single `file_write` tool, described as
   append-only and as the only tool in the step, and the instruction to
-  reply `NOTHING_TO_SAVE` when there is nothing worth keeping. A reply
+  reply `NOTHING_TO_SAVE` when there is nothing worth keeping. Images in
+  the history are replaced by a count of what was omitted: the step runs
+  on the `compaction` and `conversation` slots, and a text-only model
+  there rejects the whole request rather than the image alone. A reply
   that is neither (prose, or a tool the history shows but the step does
   not offer) is corrected once, naming what the model did; a model
   that answers wrongly twice hands over to the `compaction` slot. The
