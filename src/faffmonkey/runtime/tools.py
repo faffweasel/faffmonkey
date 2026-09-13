@@ -490,7 +490,8 @@ TOOL_SCHEMAS: list[dict] = [
                 "Run a command from a skill's SKILL.md. This is the only way "
                 "to run a skill's scripts; never run them through shell_exec. "
                 "Example: name=\"digest-engine\", "
-                "input=\"feed_fetch --digest NAME --json\"."
+                "input=\"feed_fetch --digest NAME --json\". When an argument "
+                "contains quotes or JSON, send 'args' instead of 'input'."
             ),
             "parameters": {
                 "type": "object",
@@ -498,8 +499,23 @@ TOOL_SCHEMAS: list[dict] = [
                     "name": {"type": "string", "description": "Skill name."},
                     "input": {
                         "type": "string",
-                        "description": "The command line exactly as SKILL.md documents it.",
+                        "description": (
+                            "The command line exactly as SKILL.md documents it. "
+                            "Parsed with shell quoting rules, so an argument "
+                            "containing a quote character needs 'args'."
+                        ),
                         "default": "",
+                    },
+                    "args": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "The same command already split, action first: "
+                            "[\"add\", \"{\\\"id\\\": \\\"x\\\"}\"]. Passed to "
+                            "the script untouched, so use this for any "
+                            "argument holding JSON, quotes or apostrophes. "
+                            "Send either 'input' or 'args', never both."
+                        ),
                     },
                 },
                 "required": ["name"],
@@ -1547,22 +1563,42 @@ class ToolRegistry:
         skill_input = args.get("input", "")
         if not isinstance(skill_input, str):
             return ToolResult(id=call_id, content="'input' must be a string", is_error=True)
+        argv = args.get("args")
+        if argv is not None and not (
+            isinstance(argv, list) and all(isinstance(a, str) for a in argv)
+        ):
+            return ToolResult(
+                id=call_id, content="'args' must be a list of strings", is_error=True,
+            )
+        if argv and skill_input:
+            return ToolResult(
+                id=call_id,
+                content="send either 'input' or 'args', not both",
+                is_error=True,
+            )
 
         full_md = skill_load_full(self._workspace, name)
         if full_md is None:
             return ToolResult(id=call_id, content=f"skill not found: {name}", is_error=True)
 
-        # shlex, not str.split: every documented skill call quotes its
-        # arguments ("remind add \"call mum\" \"tomorrow 9am\""), and
-        # whitespace splitting shreds them into unusable fragments.
-        try:
-            parts = shlex.split(skill_input) if skill_input else []
-        except ValueError as e:
-            return ToolResult(
-                id=call_id,
-                content=f"could not parse skill input: {e}",
-                is_error=True,
-            )
+        if argv:
+            # Already split by the caller, so no quoting layer stands
+            # between an argument and the script. An apostrophe inside a
+            # JSON payload ends the shlex quote that wraps it, which either
+            # fails the call or silently strips the apostrophe.
+            parts = list(argv)
+        else:
+            # shlex, not str.split: every documented skill call quotes its
+            # arguments ("remind add \"call mum\" \"tomorrow 9am\""), and
+            # whitespace splitting shreds them into unusable fragments.
+            try:
+                parts = shlex.split(skill_input) if skill_input else []
+            except ValueError as e:
+                return ToolResult(
+                    id=call_id,
+                    content=f"could not parse skill input: {e}",
+                    is_error=True,
+                )
         action = parts[0] if parts else ""
         action_args = parts[1:] if len(parts) > 1 else []
 

@@ -1,3 +1,4 @@
+import json
 import socket
 import time
 import urllib.error
@@ -1095,6 +1096,69 @@ class TestToolValidation:
         result = reg.dispatch(ToolCall(id="t1", name="skill_invoke", arguments={"name": "test-skill", "input": 123}))
         assert result.is_error
         assert "input" in result.content
+
+
+class TestSkillInvokeArgs:
+    """`args` carries an argument to the script byte for byte."""
+
+    def _skill(self, ws):
+        skill_dir = ws / "skills" / "echoer"
+        (skill_dir / "scripts").mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: echoer\n---\nEchoes argv[1].\n")
+        (skill_dir / "scripts" / "echo.py").write_text(
+            "import sys\nsys.stdout.write(sys.argv[1])\n"
+        )
+        return _registry(ws, {"skill_invoke": "always"}, wrap=False)
+
+    def test_json_payload_keeps_its_apostrophes(self, ws):
+        """A quote character inside an argument reaches the script unaltered.
+
+        Shell-style splitting of a single `input` string ends the payload's
+        wrapping quote at the first apostrophe, so a job prompt written in
+        ordinary English is either rejected or silently reworded.
+        """
+        reg = self._skill(ws)
+        payload = json.dumps({
+            "id": "dream-test",
+            "prompt": "Process the 'liverpool-fc' digest and note today's word.",
+        })
+
+        result = reg.dispatch(ToolCall(
+            id="t1", name="skill_invoke",
+            arguments={"name": "echoer", "args": ["echo", payload]},
+        ))
+
+        assert not result.is_error
+        assert result.content == payload
+        assert json.loads(result.content)["prompt"].count("'") == 3
+
+    def test_input_and_args_together_is_refused(self, ws):
+        reg = self._skill(ws)
+        result = reg.dispatch(ToolCall(
+            id="t1", name="skill_invoke",
+            arguments={"name": "echoer", "input": "echo x", "args": ["echo", "y"]},
+        ))
+        assert result.is_error
+        assert "not both" in result.content
+
+    def test_args_must_be_a_list_of_strings(self, ws):
+        reg = self._skill(ws)
+        for bad in ("echo", ["echo", 42], {"action": "echo"}):
+            result = reg.dispatch(ToolCall(
+                id="t1", name="skill_invoke",
+                arguments={"name": "echoer", "args": bad},
+            ))
+            assert result.is_error
+            assert "'args'" in result.content
+
+    def test_input_still_works(self, ws):
+        reg = self._skill(ws)
+        result = reg.dispatch(ToolCall(
+            id="t1", name="skill_invoke",
+            arguments={"name": "echoer", "input": 'echo "hello world"'},
+        ))
+        assert not result.is_error
+        assert result.content == "hello world"
 
 
 class TestIsProtected:

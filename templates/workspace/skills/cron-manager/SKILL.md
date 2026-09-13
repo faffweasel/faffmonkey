@@ -20,17 +20,23 @@ Do not use for running jobs manually; that is `faff cron run <jobId>` on the hos
 list
 ```
 
+Every action here takes a JSON argument, so call this skill with
+`skill_invoke`'s `args` list rather than `input`. `input` is split with
+shell quoting rules, and an apostrophe in a prompt ("today's word") ends
+the quote wrapping the payload: the call either fails or quietly loses
+the apostrophes.
+
 **add**, validate a job JSON object and append it to the schedule. Rejects duplicate ids, bad cron expressions, and invalid field combinations:
 
 ```
-add '{"id": "...", "schedule": "...", "prompt": "...", ...}'
+args: ["add", "{\"id\": \"...\", \"schedule\": \"...\", \"prompt\": \"...\"}"]
 ```
 
 **update**, change fields on an existing job in place. Pass the id and a JSON object with only the fields to change; a `null` value removes a field. The result is validated like `add`. The id cannot be changed. Use this to change a schedule, prompt, model or delivery channel; never disable-and-add:
 
 ```
-update heartbeat '{"schedule": "*/30 * * * *"}'
-update heartbeat '{"deliver": {"mode": "announce", "channel": "telegram"}}'
+args: ["update", "heartbeat", "{\"schedule\": \"*/30 * * * *\"}"]
+args: ["update", "heartbeat", "{\"deliver\": {\"mode\": \"announce\", \"channel\": \"telegram\"}}"]
 ```
 
 **remove**, delete a job by id:
