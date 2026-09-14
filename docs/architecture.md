@@ -102,7 +102,7 @@ slash-command check (handled without an LLM call), persist the user
 message, resolve the model slot,
 then the completion loop: call the provider, dispatch any tool calls
 through the registry, append results, repeat until a text-only
-response. Guards: 50 tool calls per turn, 20 LLM round-trips per turn,
+response. Guards: 50 tool calls per turn, 25 LLM round-trips per turn,
 and two turn clocks: a 600s inactivity timeout that genuinely resets on
 each provider response and each tool result, plus a 3600s absolute cap
 so a turn that keeps making progress cannot run all day. Empty

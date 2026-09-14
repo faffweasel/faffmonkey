@@ -273,7 +273,7 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="llm-roundtrip-budget-not-enforced",
         path="src/faffmonkey/runtime/loop.py",
-        old="MAX_LLM_CALLS_PER_TURN = 20",
+        old="MAX_LLM_CALLS_PER_TURN = 25",
         new="MAX_LLM_CALLS_PER_TURN = 10_000_000",
         why="One turn can bill indefinitely.",
     ),

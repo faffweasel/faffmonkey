@@ -144,7 +144,7 @@ class ModelConfig:
     base_url: str
     api_key: str = field(repr=False)
     module: str = ""
-    timeout: int = 120
+    timeout: int = 600
     allow_insecure: bool = False
     # The bootstrap budget and the compaction threshold are fractions of
     # the model's context window, so each model carries its own.
@@ -272,7 +272,7 @@ def _parse_model(raw: dict, label: str) -> ModelConfig:
                 f"model {label!r}: env var {api_key_env!r} not set"
             )
 
-    timeout = raw.get("timeout", 120)
+    timeout = raw.get("timeout", 600)
     # bool subclasses int, so without this check "timeout": true passes
     # as a 1 second timeout.
     if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:

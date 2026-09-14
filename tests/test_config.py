@@ -554,6 +554,20 @@ def test_fallback_models_not_a_list(tmp_path):
         load_config(path)
 
 
+def test_timeout_defaults_to_tool_ceiling(tmp_path):
+    """A model entry without a timeout gets the same 600s headroom as
+    shell_exec and skill actions, so a slow completion is not cut off
+    sooner than the work it drives."""
+    path = _write_config(
+        tmp_path,
+        models={"main": {
+            "provider": "ollama-local", "model": "llama3",
+            "base_url": "http://localhost:11434/v1",
+        }},
+    )
+    assert load_config(path).models["main"].timeout == 600
+
+
 def test_timeout_zero_rejected(tmp_path):
     path = _write_config(
         tmp_path,

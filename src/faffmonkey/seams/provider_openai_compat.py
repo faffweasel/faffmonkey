@@ -71,7 +71,7 @@ class OpenAICompatProvider:
     RETRYABLE_CODES: ClassVar[set[int]] = {429, 500, 502, 503}
 
     def __init__(
-        self, base_url: str, api_key: str = "", timeout: int = 120,
+        self, base_url: str, api_key: str = "", timeout: int = 600,
         allow_insecure: bool = False,
     ) -> None:
         self.base_url = base_url.rstrip("/")

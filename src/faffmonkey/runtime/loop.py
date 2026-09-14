@@ -57,7 +57,7 @@ from faffmonkey.types import (
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_CALLS_PER_TURN = 50
-MAX_LLM_CALLS_PER_TURN = 20
+MAX_LLM_CALLS_PER_TURN = 25
 INACTIVITY_TIMEOUT = 600
 MAX_TURN_DURATION = 3600
 # How many images a single request may carry. Older ones degrade to a
