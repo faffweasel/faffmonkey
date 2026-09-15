@@ -216,6 +216,43 @@ class TestSend:
         ch._reply_channel = MagicMock()
         ch.send(OutboundMessage(text="hello"))
 
+    def test_an_undeliverable_send_raises(self):
+        """A send that never reaches Discord raises.
+
+        Both callers record a delivery unless send() raises, so a channel
+        that swallows the error reports a lost reply as delivered.
+        """
+        ch = _make_channel(allowed_users=["123"])
+        mock_future = MagicMock()
+        mock_future.result.side_effect = TimeoutError("no reply")
+        ch._client = MagicMock()
+        ch._reply_channel = MagicMock()
+        ch._loop = MagicMock()
+        with patch(
+            "contrib.channel_discord.asyncio.run_coroutine_threadsafe",
+            return_value=mock_future,
+        ):
+            with pytest.raises(TimeoutError):
+                ch.send(OutboundMessage(text="hello"))
+
+    def test_a_failed_attachment_raises_after_the_text_went(self):
+        """A message whose attachment fails is still reported as failed,
+        even though its text part was delivered."""
+        ch = _make_channel(allowed_users=["123"])
+        delivered = MagicMock()
+        delivered.result.return_value = None
+        failed = MagicMock()
+        failed.result.side_effect = RuntimeError("upload rejected")
+        ch._client = MagicMock()
+        ch._reply_channel = MagicMock()
+        ch._loop = MagicMock()
+        with patch(
+            "contrib.channel_discord.asyncio.run_coroutine_threadsafe",
+            side_effect=[delivered, failed],
+        ):
+            with pytest.raises(RuntimeError, match="upload rejected"):
+                ch.send(OutboundMessage(text="here", attachments=[Path("/tmp/f.txt")]))
+
 
 class TestAnnouncementsNeverGoToAGuild:
     """The last room the owner spoke in was the send target for everything,

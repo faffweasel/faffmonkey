@@ -319,39 +319,29 @@ class DiscordChannel:
         return self._reply_channel
 
     def send(self, message: OutboundMessage) -> None:
+        """Deliver on the client's loop, raising on the first part that
+        fails: a send that cannot fail is recorded as delivered by every
+        caller.
+        """
         if self._client is None or self._loop is None:
             return
         target = self._target(message.group_id)
         for chunk in _split_message(message.text):
-            future = asyncio.run_coroutine_threadsafe(
+            asyncio.run_coroutine_threadsafe(
                 target.send(chunk), self._loop,
-            )
-            try:
-                future.result(timeout=30)
-            except Exception:
-                logger.warning("failed to send discord message chunk")
-                return
+            ).result(timeout=30)
         if message.audio is not None:
             ext = "ogg" if message.audio_mime == "audio/ogg" else "wav"
             voice_file = discord.File(
                 io.BytesIO(message.audio), filename=f"voice-reply.{ext}",
             )
-            future = asyncio.run_coroutine_threadsafe(
+            asyncio.run_coroutine_threadsafe(
                 target.send(file=voice_file), self._loop,
-            )
-            try:
-                future.result(timeout=30)
-            except Exception:
-                logger.warning("failed to send discord voice reply")
+            ).result(timeout=30)
         for path in message.attachments:
-            future = asyncio.run_coroutine_threadsafe(
-                target.send(file=discord.File(str(path))),
-                self._loop,
-            )
-            try:
-                future.result(timeout=30)
-            except Exception:
-                logger.warning("failed to send discord attachment: %s", path)
+            asyncio.run_coroutine_threadsafe(
+                target.send(file=discord.File(str(path))), self._loop,
+            ).result(timeout=30)
 
     def poll(self) -> InboundMessage | None:
         """Non-blocking variant of receive, so the user can interrupt an
