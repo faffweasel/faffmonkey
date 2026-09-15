@@ -23,7 +23,15 @@ class Channel(Protocol):
         """
         ...
 
-    def send(self, message: OutboundMessage) -> None: ...
+    def send(self, message: OutboundMessage) -> None:
+        """Deliver the message, or raise if it could not be delivered.
+
+        Both callers record a failure and neither lets it escape, so a
+        channel that swallows its own send errors reports every dropped
+        message as delivered.
+        """
+        ...
+
     def is_allowed(self, sender_id: str) -> bool: ...
     def poll(self) -> InboundMessage | None: ...
 

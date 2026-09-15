@@ -7,6 +7,8 @@ import logging
 import os
 import queue
 import threading
+import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,6 +25,13 @@ from faffmonkey.types import InboundMessage, OutboundMessage
 logger = logging.getLogger(__name__)
 
 TELEGRAM_MAX_LENGTH = 4096
+# Telegram rate-limits, has outages and returns 5xx, and the library
+# retries get_updates but not the calls that send. One attempt per message
+# means any of those loses it outright.
+SEND_ATTEMPTS = 3
+SEND_BACKOFF_BASE = 0.5
+# A backstop behind python-telegram-bot's own request timeouts.
+SEND_RESULT_TIMEOUT = 15.0
 
 
 def _split_message(text: str, limit: int = TELEGRAM_MAX_LENGTH) -> list[str]:
@@ -188,12 +197,33 @@ class TelegramChannel:
         except queue.Empty:
             return None
 
-    def _submit(self, coro, label: str) -> None:
-        try:
-            future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-            future.result(timeout=30)
-        except Exception as e:
-            logger.warning("telegram %s failed: %s", label, e)
+    def _submit(self, make_coro: Callable[[], object], label: str) -> None:
+        """Run one bot call on the polling loop, retrying a failed attempt.
+
+        Raises once the attempts are spent: a send that cannot report
+        failure leaves the agent loop and the scheduler both recording a
+        message that went nowhere.
+
+        make_coro is called per attempt, because a coroutine cannot be
+        awaited twice and a payload cannot be read from a spent buffer.
+        """
+        last: Exception | None = None
+        for attempt in range(SEND_ATTEMPTS):
+            try:
+                future = asyncio.run_coroutine_threadsafe(make_coro(), self._loop)
+                future.result(timeout=SEND_RESULT_TIMEOUT)
+                return
+            except Exception as e:
+                last = e
+                logger.warning(
+                    "telegram %s failed (attempt %d/%d): %s",
+                    label, attempt + 1, SEND_ATTEMPTS, e,
+                )
+                if attempt < SEND_ATTEMPTS - 1:
+                    time.sleep(SEND_BACKOFF_BASE * (2 ** attempt))
+        raise RuntimeError(
+            f"telegram {label} failed after {SEND_ATTEMPTS} attempts: {last}"
+        )
 
     def send(self, message: OutboundMessage) -> None:
         if self._app is None or self._loop is None:
@@ -206,29 +236,37 @@ class TelegramChannel:
             return
         for chunk in _split_message(message.text):
             self._submit(
-                self._app.bot.send_message(chat_id=chat_id, text=chunk),
+                lambda c=chunk: self._app.bot.send_message(chat_id=chat_id, text=c),
                 "send_message",
             )
         if message.audio is not None:
-            buf = io.BytesIO(message.audio)
+            audio = message.audio
             if message.audio_mime == "audio/ogg":
                 self._submit(
-                    self._app.bot.send_voice(chat_id=chat_id, voice=buf),
+                    lambda: self._app.bot.send_voice(
+                        chat_id=chat_id, voice=io.BytesIO(audio),
+                    ),
                     "send_voice",
                 )
             else:
                 self._submit(
-                    self._app.bot.send_audio(
-                        chat_id=chat_id, audio=buf, filename="reply.wav",
+                    lambda: self._app.bot.send_audio(
+                        chat_id=chat_id, audio=io.BytesIO(audio),
+                        filename="reply.wav",
                     ),
                     "send_audio",
                 )
         for path in message.attachments:
-            with open(path, "rb") as f:
-                self._submit(
-                    self._app.bot.send_document(chat_id=chat_id, document=f),
-                    "send_document",
-                )
+            # Read once, wrap per attempt: a retry cannot re-read a buffer
+            # the attempt before it consumed.
+            data = Path(path).read_bytes()
+            name = Path(path).name
+            self._submit(
+                lambda d=data, n=name: self._app.bot.send_document(
+                    chat_id=chat_id, document=io.BytesIO(d), filename=n,
+                ),
+                "send_document",
+            )
 
     def _load_chat_id(self) -> int | None:
         """The chat this bot last replied in, from a previous process.

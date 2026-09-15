@@ -11,7 +11,12 @@ if "telegram" not in sys.modules:
     sys.modules["telegram.ext"] = MagicMock()
 
 from faffmonkey.types import OutboundMessage
-from contrib.channel_telegram import TelegramChannel, _group_id, _normalise_command
+from contrib.channel_telegram import (
+    SEND_ATTEMPTS,
+    TelegramChannel,
+    _group_id,
+    _normalise_command,
+)
 
 
 def _make_channel(**kwargs) -> TelegramChannel:
@@ -62,23 +67,61 @@ class TestSend:
         ch._app.bot.send_audio.assert_called_once()
         ch._app.bot.send_voice.assert_not_called()
 
-    def test_send_failure_logged_not_raised(self, caplog):
-        """The log line is the only evidence a send failed.
+    def test_an_undeliverable_send_raises(self, caplog):
+        """A send that never reaches Telegram raises, and says so once per
+        attempt.
 
-        A delivery that fails without a log is invisible to the operator.
+        A send that cannot fail leaves the agent loop and the scheduler
+        both recording a message that went nowhere, so the reply is lost
+        with no error anywhere.
         """
         ch = self._sending_channel()
         mock_future = MagicMock()
         mock_future.result.side_effect = TimeoutError("no reply")
         with caplog.at_level(logging.WARNING, logger="contrib.channel_telegram"):
-            with patch(
+            with patch("contrib.channel_telegram.time.sleep"), patch(
                 "contrib.channel_telegram.asyncio.run_coroutine_threadsafe",
                 return_value=mock_future,
-            ):
-                ch.send(OutboundMessage(text="reply"))
-        assert [r.getMessage() for r in caplog.records] == [
-            "telegram send_message failed: no reply",
-        ]
+            ) as mock_rcts:
+                with pytest.raises(RuntimeError, match="send_message"):
+                    ch.send(OutboundMessage(text="reply"))
+        assert mock_rcts.call_count == SEND_ATTEMPTS
+        assert len(caplog.records) == SEND_ATTEMPTS
+
+    def test_a_send_that_fails_first_still_gets_through(self):
+        """One failed attempt is not a lost message: a later attempt that
+        succeeds delivers it and send() returns normally."""
+        ch = self._sending_channel()
+        failed = MagicMock()
+        failed.result.side_effect = TimeoutError("no reply")
+        delivered = MagicMock()
+        delivered.result.return_value = None
+        with patch("contrib.channel_telegram.time.sleep"), patch(
+            "contrib.channel_telegram.asyncio.run_coroutine_threadsafe",
+            side_effect=[failed, failed, delivered],
+        ) as mock_rcts:
+            ch.send(OutboundMessage(text="reply"))
+        assert mock_rcts.call_count == 3
+        assert ch._app.bot.send_message.call_count == 3
+
+    def test_each_attempt_builds_its_own_payload(self):
+        """A retry cannot re-read a buffer the attempt before it consumed,
+        so the coroutine and its payload are built per attempt."""
+        ch = self._sending_channel()
+        failed = MagicMock()
+        failed.result.side_effect = TimeoutError("no reply")
+        delivered = MagicMock()
+        delivered.result.return_value = None
+        with patch("contrib.channel_telegram.time.sleep"), patch(
+            "contrib.channel_telegram.asyncio.run_coroutine_threadsafe",
+            side_effect=[failed, delivered],
+        ):
+            ch.send(OutboundMessage(
+                text="", audio=b"OGGDATA", audio_mime="audio/ogg",
+            ))
+        buffers = [c.kwargs["voice"] for c in ch._app.bot.send_voice.call_args_list]
+        assert len(buffers) == 2
+        assert [b.read() for b in buffers] == [b"OGGDATA", b"OGGDATA"]
 
     def test_send_noop_without_loop(self):
         ch = _make_channel(allowed_users=["1"])
