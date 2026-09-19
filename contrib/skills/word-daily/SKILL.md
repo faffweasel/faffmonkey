@@ -1,13 +1,13 @@
 ---
 name: word-daily
-description: Daily vocabulary with spaced repetition for any language pair. Picks one word per day; the user scores it 0-5 and hard words resurface sooner. Use for the daily word cron, when the user asks for today's word, replies with a score, or asks about learning progress.
+description: Daily vocabulary with SM-2 spaced repetition for any language pair. Picks one word per day; the user scores it 0-5 and hard words resurface sooner. Use for the daily word cron, when the user asks for today's word, replies with a score, or asks about learning progress.
 metadata: '{"faffmonkey":{"requires":{"bins":["python3"]}}}'
 actions: pick_word
 ---
 
 ## Daily word
 
-1. `pick_word` returns JSON: the word, translation, pronunciation, notes, a `languages` object naming the learning and bridge languages, `total_sent`, and the selection `reason` (new / review / review_hard).
+1. `pick_word` returns JSON: the word, translation, pronunciation, notes, a `languages` object naming the learning and bridge languages, `total_sent`, and the selection `reason`: new, review, review_hard (a word the user could not recall), or already_sent (today's word was already sent; show the same word again, never a different one).
 
 2. Compose the message in the bridge language. Format:
 
@@ -26,14 +26,14 @@ actions: pick_word
 
 4. One word per day. Never send a replacement, even after a 0 or 5 score.
 
-**First message only** (`total_sent` is 1): append an explainer of the scoring scale, written in the bridge language: 1 = no idea (back tomorrow), 2 = hard (3 days), 3 = ok (1 week), 4 = easy (2 weeks), 5 = already know (1 month), 0 = skip permanently.
+**First message only** (`total_sent` is 1): append an explainer of the scoring scale, written in the bridge language: 1 = no idea (back tomorrow), 2 = hard, 3 = ok, 4 = easy (each time you recall a word the gap before it returns grows, faster for easier scores), 5 = already know (a month or more), 0 = skip permanently.
 
 ## Handling a score reply
 
 When the user replies with a bare number 0-5 shortly after a word was sent:
 
 1. Run `pick_word --feedback last <score>`. The state file tracks the last word sent, so no id lookup is needed; the daily word was sent from a different session and `--history` only lists words already scored.
-2. Acknowledge in one short phrase in the bridge language, mentioning when it will return ("back in 3 days"). Nothing more.
+2. Acknowledge in one short phrase in the bridge language, mentioning when it will return, from `interval_days` ("back in 6 days"). Nothing more.
 
 ## Progress questions
 

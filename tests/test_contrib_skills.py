@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -1172,39 +1173,134 @@ class TestWordDaily:
         assert out["total_sent"] == 1
         assert (tmp_path / "sd" / "words.json").is_file()
 
-    def test_no_repeat_of_yesterdays_word(self, tmp_path):
+    def _state_path(self, tmp_path):
+        return tmp_path / "sd" / "word-state.json"
+
+    def _pass_days(self, tmp_path, days):
+        """Move every stored date back, as if `days` days have gone by."""
+        path = self._state_path(tmp_path)
+        state = json.loads(path.read_text())
+
+        def shift(date):
+            return (datetime.strptime(date, "%Y-%m-%d") - timedelta(days=days)).strftime("%Y-%m-%d")
+
+        for ws in state["words"].values():
+            for key in ("last_sent", "next_review", "last_feedback"):
+                if ws.get(key):
+                    ws[key] = shift(ws[key])
+        if state["stats"].get("last_sent_date"):
+            state["stats"]["last_sent_date"] = shift(state["stats"]["last_sent_date"])
+        path.write_text(json.dumps(state))
+
+    def _write_words(self, tmp_path, ids):
+        sd = tmp_path / "sd"
+        sd.mkdir(exist_ok=True)
+        (sd / "words.json").write_text(json.dumps({"words": [
+            {"id": wid, "word": wid, "translation": wid, "level": "beginner"}
+            for wid in ids
+        ]}))
+
+    def _write_state(self, tmp_path, words):
+        self._state_path(tmp_path).write_text(json.dumps({
+            "words": words,
+            "stats": {"total_sent": len(words), "last_sent_date": None, "last_word_id": None},
+        }))
+
+    def _feedback(self, tmp_path, word_id, score):
+        return json.loads(self._run_pick(tmp_path, ["--feedback", word_id, str(score)]).stdout)
+
+    def test_second_pick_same_day_returns_the_same_word(self, tmp_path):
+        """One word per day: asking again the same day must not send another
+        word, or a score reply lands on the wrong one."""
         first = json.loads(self._run_pick(tmp_path).stdout)
         second = json.loads(self._run_pick(tmp_path).stdout)
-        assert first["id"] != second["id"]
+        assert second["id"] == first["id"]
+        assert second["reason"] == "already_sent"
+        assert second["total_sent"] == 1
+
+    def test_next_day_brings_a_new_word(self, tmp_path):
+        first = json.loads(self._run_pick(tmp_path).stdout)
+        self._feedback(tmp_path, first["id"], 5)
+        self._pass_days(tmp_path, 1)
+        second = json.loads(self._run_pick(tmp_path).stdout)
+        assert second["id"] != first["id"]
+        assert second["reason"] == "new"
 
     def test_feedback_sets_interval(self, tmp_path):
         picked = json.loads(self._run_pick(tmp_path).stdout)
-        result = self._run_pick(tmp_path, ["--feedback", picked["id"], "2"])
-        out = json.loads(result.stdout)
+        out = self._feedback(tmp_path, picked["id"], 2)
         assert out["status"] == "learning"
-        state = json.loads((tmp_path / "sd" / "word-state.json").read_text())
+        state = json.loads(self._state_path(tmp_path).read_text())
         assert state["words"][picked["id"]]["last_score"] == 2
 
     def test_hard_word_returns_next_day(self, tmp_path):
-        """A score of 1 promises 'back tomorrow', so the picker must check
-        whether yesterday's word is due before excluding it."""
         picked = json.loads(self._run_pick(tmp_path).stdout)
-        self._run_pick(tmp_path, ["--feedback", picked["id"], "1"])
-        state_path = tmp_path / "sd" / "word-state.json"
-        state = json.loads(state_path.read_text())
-        today = state["words"][picked["id"]]["last_feedback"]
-        state["words"][picked["id"]]["next_review"] = today
-        state_path.write_text(json.dumps(state))
+        self._feedback(tmp_path, picked["id"], 1)
+        self._pass_days(tmp_path, 1)
         again = json.loads(self._run_pick(tmp_path).stdout)
         assert again["id"] == picked["id"]
         assert again["reason"] == "review_hard"
+
+    def test_due_review_beats_a_new_word(self, tmp_path):
+        """Reviews that are due come before new words, whatever the score, or
+        a word scored 2-5 never comes back while new words remain."""
+        self._write_words(tmp_path, ["seen", "fresh"])
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        self._write_state(tmp_path, {"seen": {
+            "status": "easy", "last_score": 4, "next_review": yesterday,
+        }})
+        out = json.loads(self._run_pick(tmp_path).stdout)
+        assert out["id"] == "seen"
+        assert out["reason"] == "review"
+
+    def test_most_overdue_review_comes_first(self, tmp_path):
+        self._write_words(tmp_path, ["recent", "oldest", "fresh"])
+        def days_ago(n):
+            return (datetime.now() - timedelta(days=n)).strftime("%Y-%m-%d")
+
+        self._write_state(tmp_path, {
+            "recent": {"status": "hard", "last_score": 1, "next_review": days_ago(1)},
+            "oldest": {"status": "familiar", "last_score": 3, "next_review": days_ago(5)},
+        })
+        assert json.loads(self._run_pick(tmp_path).stdout)["id"] == "oldest"
+
+    def test_late_score_counts_from_the_send_date(self, tmp_path):
+        """A score of 1 means back the day after the word was sent, not the
+        day after the reply."""
+        picked = json.loads(self._run_pick(tmp_path).stdout)
+        self._pass_days(tmp_path, 2)
+        state = json.loads(self._state_path(tmp_path).read_text())
+        sent = state["words"][picked["id"]]["last_sent"]
+        out = self._feedback(tmp_path, picked["id"], 1)
+        expected = (datetime.strptime(sent, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+        assert out["next_review"] == expected
+
+    def test_intervals_follow_sm2(self, tmp_path):
+        """SM-2: passes give 1, 6, then previous x ease (2.5 is unchanged by
+        quality 4), and a fail resets the interval to 1 day."""
+        picked = json.loads(self._run_pick(tmp_path).stdout)
+        intervals = [self._feedback(tmp_path, picked["id"], 3)["interval_days"] for _ in range(3)]
+        assert intervals == [1, 6, 15]
+        assert self._feedback(tmp_path, picked["id"], 1)["interval_days"] == 1
+        assert self._feedback(tmp_path, picked["id"], 3)["interval_days"] == 1
+
+    def test_hard_pass_lowers_ease(self, tmp_path):
+        picked = json.loads(self._run_pick(tmp_path).stdout)
+        self._feedback(tmp_path, picked["id"], 2)
+        state = json.loads(self._state_path(tmp_path).read_text())
+        assert state["words"][picked["id"]]["ease"] < 2.5
+
+    def test_already_known_goes_at_least_a_month(self, tmp_path):
+        picked = json.loads(self._run_pick(tmp_path).stdout)
+        assert self._feedback(tmp_path, picked["id"], 5)["interval_days"] >= 30
 
     def test_feedback_last_targets_last_sent_not_last_scored(self, tmp_path):
         """The score reply arrives in a different session from the cron that
         sent the word, and --history lists only scored words, so 'last' has
         to mean the last sent."""
         first = json.loads(self._run_pick(tmp_path).stdout)
-        self._run_pick(tmp_path, ["--feedback", first["id"], "3"])
+        self._run_pick(tmp_path, ["--feedback", first["id"], "5"])
+        self._pass_days(tmp_path, 1)
         second = json.loads(self._run_pick(tmp_path).stdout)
         out = json.loads(self._run_pick(tmp_path, ["--feedback", "last", "1"]).stdout)
         assert out["word_id"] == second["id"]

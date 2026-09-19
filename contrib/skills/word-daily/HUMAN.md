@@ -51,8 +51,13 @@ by your 0-5 replies. Works for any language pair.
 
 ## Notes
 
-- Scoring intervals: 1 → tomorrow, 2 → 3 days, 3 → 1 week, 4 → 2 weeks,
-  5 → 1 month, 0 → skipped permanently.
+- Scheduling is SM-2. Each word has its own ease and interval. 1 (no idea)
+  brings it back the day after it was sent and restarts its intervals.
+  2-4 are passes: the interval goes 1 day, 6 days, then grows by the ease
+  each time, and the ease drops on a 2 and rises on a 4. 5 (already know)
+  jumps to at least a month. 0 skips the word permanently.
+- Each day the most overdue due word comes first; a new word is sent only
+  when nothing is due. Asking again the same day returns the same word.
 - Progress lives in `skills-data/word-daily/word-state.json`; reset with
   `pick_word --reset --confirm`.
 - Replacing the wordlist does not reset progress for word ids that match.
