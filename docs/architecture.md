@@ -105,7 +105,11 @@ through the registry, append results, repeat until a text-only
 response. Guards: 50 tool calls per turn, 25 LLM round-trips per turn,
 and two turn clocks: a 600s inactivity timeout that genuinely resets on
 each provider response and each tool result, plus a 3600s absolute cap
-so a turn that keeps making progress cannot run all day. Empty
+so a turn that keeps making progress cannot run all day. Each provider
+call times out after 120s by default (`timeout` on the model entry), so
+a hung provider spends its 3 attempts inside one inactivity window and
+fails over; messages queue behind a turn, so a long wait here stalls
+every one of them. Empty
 responses retry up to 3 times with a nudge; before that can trigger,
 the provider parser treats a response whose content is empty but whose
 reasoning/reasoning_content field carries text (reasoning models over

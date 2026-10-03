@@ -3,6 +3,8 @@ import json
 import pytest
 
 from faffmonkey.config import ConfigError, load_config, validate_config_schema
+from faffmonkey.runtime.loop import INACTIVITY_TIMEOUT
+from faffmonkey.runtime.retry import MAX_RETRIES
 
 MAIN_MODEL = {
     "provider": "ollama-local", "model": "llama3",
@@ -554,10 +556,10 @@ def test_fallback_models_not_a_list(tmp_path):
         load_config(path)
 
 
-def test_timeout_defaults_to_tool_ceiling(tmp_path):
-    """A model entry without a timeout gets the same 600s headroom as
-    shell_exec and skill actions, so a slow completion is not cut off
-    sooner than the work it drives."""
+def test_default_timeout_retries_fit_inside_inactivity_window(tmp_path):
+    """A provider that hangs on every attempt exhausts its retries inside
+    one inactivity window, so the turn fails over or reports the failure
+    instead of holding every queued message for half an hour."""
     path = _write_config(
         tmp_path,
         models={"main": {
@@ -565,7 +567,8 @@ def test_timeout_defaults_to_tool_ceiling(tmp_path):
             "base_url": "http://localhost:11434/v1",
         }},
     )
-    assert load_config(path).models["main"].timeout == 600
+    timeout = load_config(path).models["main"].timeout
+    assert timeout * MAX_RETRIES < INACTIVITY_TIMEOUT
 
 
 def test_timeout_zero_rejected(tmp_path):
