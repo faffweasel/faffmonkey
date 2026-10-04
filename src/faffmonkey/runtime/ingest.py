@@ -7,20 +7,20 @@ logger = logging.getLogger(__name__)
 
 _INVISIBLE = re.compile(
     '['
-    '​-‏'     # zero-width space, ZWNJ, ZWJ, LRM, RLM
-    '﻿'            # BOM / ZWNBS
-    '⁠-⁤'     # word joiner, invisible times/separator/plus
-    '⁥'            # reserved
-    '­'            # soft hyphen
-    ' - '     # line/paragraph separators, embedding controls
-    '⁦-⁩'     # bidi isolates
-    '͏'            # combining grapheme joiner
-    '᠎'            # Mongolian Vowel Separator
-    '؜'        # Arabic Letter Mark
-    'ᅟᅠ'      # Hangul Choseong/Jungseong fillers
-    'ㅤ'            # Hangul filler
-    'ﾠ'            # halfwidth Hangul filler
-    '︀-️'    # variation selectors
+    '\u200b-\u200f'  # zero-width space, ZWNJ, ZWJ, LRM, RLM
+    '\ufeff'         # BOM / ZWNBS
+    '\u2060-\u2064'  # word joiner, invisible times/separator/plus
+    '\u2065'         # reserved
+    '\u00ad'         # soft hyphen
+    '\u2028-\u202f'  # line/paragraph separators, embedding controls
+    '\u2066-\u2069'  # bidi isolates
+    '\u034f'         # combining grapheme joiner
+    '\u180e'         # Mongolian Vowel Separator
+    '\u061c'         # Arabic Letter Mark
+    '\u115f\u1160'   # Hangul Choseong/Jungseong fillers
+    '\u3164'         # Hangul filler
+    '\uffa0'         # halfwidth Hangul filler
+    '\ufe00-\ufe0f'  # variation selectors
     '\U000E0100-\U000E01EF'  # variation selectors supplement
     '\U000E0001-\U000E007F'  # tags block
     ']'
